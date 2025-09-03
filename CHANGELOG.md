@@ -1,5 +1,14 @@
 # Changelog
 
+
+ajout de la page _about.html
+
+modifications des pages 
+Settings.html
+settings.py
+
+
+
 ## [1.4.1] - 2025-09-03 - 02:59
 ### Changed
 - Version : 1.4.0 → 1.4.1

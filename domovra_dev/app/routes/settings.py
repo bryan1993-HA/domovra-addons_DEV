@@ -112,16 +112,18 @@ def _file_size(path: str) -> str:
 
 def _read_addon_config() -> dict:
     """
-    Tente plusieurs emplacements possibles de config.json :
-    - domovra/config.json (cas add-on)
-    - repo root/config.json (fallback)
+    Recherche config.json :
+    - racine de l’add-on (là où se trouvent run.sh / Dockerfile)
+    - domovra/config.json (cas spécial)
+    - racine repo (fallback)
     """
     here = os.path.abspath(os.path.dirname(__file__))                 # …/domovra/app/routes
-    addon_dir = os.path.abspath(os.path.join(here, "..", ".."))       # …/domovra/
+    addon_root = os.path.abspath(os.path.join(here, "..", ".."))      # …/domovra/
     repo_root = os.path.abspath(os.path.join(here, "..", "..", "..")) # …/
 
     candidates = [
-        os.path.join(addon_dir, "config.json"),
+        os.path.join(addon_root, "config.json"),   # ✅ racine de l’add-on
+        os.path.join(addon_root, "domovra", "config.json"),
         os.path.join(repo_root, "config.json"),
     ]
     for p in candidates:
@@ -132,6 +134,7 @@ def _read_addon_config() -> dict:
         except Exception:
             pass
     return {}
+
 
 def _counts_summary(db_path: str) -> dict:
     out = {"products": 0, "locations": 0, "lots": 0, "journal": 0}
