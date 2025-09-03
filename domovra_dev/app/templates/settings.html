@@ -4,17 +4,36 @@
 {% block content %}
 <div class="wrap" data-page="settings">
 
-    <!-- Onglets (style sidebar) — toujours en haut, PC & mobile -->
-    <nav class="tabs sticky sidebar-tabs" role="tablist" aria-label="Catégories de paramètres">
-        <button type="button" class="tab" data-tab="appearance" aria-selected="true">Apparence</button>
-        <button type="button" class="tab" data-tab="stock">Produits & Stocks</button>
-        <button type="button" class="tab" data-tab="toasts">Notifications</button>
-        <button type="button" class="tab" data-tab="locations">Emplacements</button>
-        <button type="button" class="tab" data-tab="admindb">Admin DB</button>
-        <button type="button" class="tab" data-tab="advanced">Avancés</button>
-        <button type="button" class="tab" data-tab="journal">Journal</button>
-        <button type="button" class="tab" data-tab="about">À propos</button>
-    </nav>
+    <!-- Barre fixe sous le header : onglets (desktop) + select (mobile) -->
+    <div class="tabs-fixed" role="navigation" aria-label="Catégories de paramètres">
+        <!-- PC / Tablette : onglets -->
+        <nav class="tabs desktop" role="tablist">
+            <button type="button" class="tab" data-tab="appearance" aria-selected="true">Apparence</button>
+            <button type="button" class="tab" data-tab="stock">Produits & Stocks</button>
+            <button type="button" class="tab" data-tab="toasts">Notifications</button>
+            <button type="button" class="tab" data-tab="locations">Emplacements</button>
+            <button type="button" class="tab" data-tab="admindb">Admin DB</button>
+            <button type="button" class="tab" data-tab="advanced">Avancés</button>
+            <button type="button" class="tab" data-tab="journal">Journal</button>
+            <button type="button" class="tab" data-tab="about">À propos</button>
+        </nav>
+
+        <!-- Mobile : select -->
+        <div class="tabs-select mobile" aria-label="Choisir un onglet">
+            <select id="tabSelect">
+                <option value="appearance">Apparence</option>
+                <option value="stock">Produits & Stocks</option>
+                <option value="toasts">Notifications</option>
+                <option value="locations">Emplacements</option>
+                <option value="admindb">Admin DB</option>
+                <option value="advanced">Avancés</option>
+                <option value="journal">Journal</option>
+                <option value="about">À propos</option>
+            </select>
+        </div>
+    </div>
+    <!-- Décalage de contenu = hauteur de la barre fixe -->
+    <div class="tabs-offset" aria-hidden="true"></div>
 
     {# ======= FORM RÉGLAGES UNIQUEMENT ======= #}
     <form id="settings-form" method="post" action="{{ BASE }}settings/save">
@@ -57,88 +76,124 @@
 </div>
 
 <style>
-    /* 🔒 ne jamais afficher [hidden] */
+    /* 🔒 sécurité : elements [hidden] toujours cachés */
     [hidden] {
         display: none !important;
     }
 
-    /* ===== Nav tabs — style sidebar, sticky, PC centré / mobile scroll ===== */
-    .tabs.sticky.sidebar-tabs {
-        position: sticky;
-        top: 56px;
-        /* ajuste si ton header change */
-        z-index: 7;
-        padding: 8px 0 10px;
-        margin: 0 0 12px 0;
+    /* ===== Barre FIXE sous le header ===== */
+    :root {
+        --header-h: 56px;
+        /* hauteur approx du header (peut être ajustée) */
+        --tabs-h: 56px;
+        /* sera mis à jour en JS */
+    }
+
+    .tabs-fixed {
+        position: fixed;
+        top: var(--header-h);
+        left: 0;
+        right: 0;
+        z-index: 100;
+        /* sous le header (1000) mais au-dessus du contenu */
         background: var(--bg-body);
         border-bottom: 1px solid var(--line);
+        /* petite ombre subtile */
+        box-shadow: 0 1px 0 rgba(0, 0, 0, .06);
+    }
+
+    .tabs-offset {
+        height: var(--tabs-h);
+    }
+
+    /* pousse le contenu sous la barre */
+
+    /* ===== Desktop : onglets style sidebar, en 1 ligne centrée ===== */
+    .tabs.desktop {
         display: flex;
+        justify-content: center;
+        /* centré */
         gap: 8px;
+        padding: 8px 8px 10px;
+        white-space: nowrap;
+        overflow-x: auto;
+        /* si jamais ça dépasse, scroll horizontal discret */
+        scrollbar-width: none;
+        -webkit-overflow-scrolling: touch;
     }
 
-    /* PC / tablettes : centré + wrap (pas de scroll) */
-    @media (min-width: 720px) {
-        .tabs.sticky.sidebar-tabs {
-            justify-content: center;
-            flex-wrap: wrap;
-            overflow: visible;
-        }
+    .tabs.desktop::-webkit-scrollbar {
+        display: none;
     }
 
-    /* Mobile : une ligne, scroll horizontal fluide + fondu bords */
-    @media (max-width: 719px) {
-        .tabs.sticky.sidebar-tabs {
-            justify-content: flex-start;
-            flex-wrap: nowrap;
-            overflow-x: auto;
-            overflow-y: hidden;
-            -webkit-overflow-scrolling: touch;
-            scrollbar-width: none;
-            padding-inline: 2px;
-            mask-image: linear-gradient(90deg, transparent 0, #000 16px, #000 calc(100% - 16px), transparent 100%);
-        }
-
-        .tabs.sticky.sidebar-tabs::-webkit-scrollbar {
-            display: none;
-        }
-    }
-
-    /* Boutons = même style que .menu a */
-    .tabs.sidebar-tabs .tab {
+    .tabs.desktop .tab {
         display: flex;
         align-items: center;
         gap: 8px;
         padding: 10px 12px;
         border: 1px solid #242932;
-        /* = .menu a border */
+        /* même style que .menu a */
         background: #151922;
-        /* = .menu a bg */
         border-radius: 10px;
-        /* = .menu a radius */
         cursor: pointer;
         color: inherit;
         -webkit-tap-highlight-color: transparent;
         user-select: none;
-        white-space: nowrap;
-        transition: filter .12s ease, border-color .12s ease, box-shadow .12s ease, background .12s ease;
+        transition: filter .12s ease, border-color .12s ease, box-shadow .12s ease;
         font-weight: 500;
     }
 
-    .tabs.sidebar-tabs .tab:hover {
+    .tabs.desktop .tab:hover {
         filter: brightness(1.05);
     }
 
-    .tabs.sidebar-tabs .tab[aria-selected="true"] {
+    .tabs.desktop .tab[aria-selected="true"] {
         border-color: #4f46e5;
         box-shadow: 0 0 0 1px #4f46e5 inset;
     }
 
-    .tabs.sidebar-tabs .tab:focus-visible {
+    .tabs.desktop .tab:focus-visible {
         outline: 2px solid #4f46e5;
         outline-offset: 2px;
     }
 
-    /* ===== Bouton Enregistrer sticky ===== */
+    /* ===== Mobile : select compact (style sidebar) ===== */
+    .tabs-select.mobile {
+        display: none;
+        padding: 8px;
+    }
+
+    .tabs-select.mobile select {
+        width: 100%;
+        padding: 10px 12px;
+        border: 1px solid #242932;
+        border-radius: 10px;
+        background: #151922;
+        color: inherit;
+    }
+
+    /* Points de rupture */
+    @media (max-width: 719.98px) {
+        .tabs.desktop {
+            display: none;
+        }
+
+        .tabs-select.mobile {
+            display: block;
+        }
+    }
+
+    @media (min-width: 720px) {
+        .tabs.desktop {
+            display: flex;
+        }
+
+        .tabs-select.mobile {
+            display: none;
+        }
+    }
+
+    /* ===== Bouton Enregistrer sticky en bas ===== */
     .sticky-save {
         position: sticky;
         bottom: 8px;
@@ -153,40 +208,53 @@
 {% block scripts %}
 <script>
     (function () {
-        const tabs = document.querySelectorAll('.tabs .tab');
+        const tabs = document.querySelectorAll('.tabs.desktop .tab');
         const panels = document.querySelectorAll('[data-panel]');
         const saveRow = document.querySelector('.save-row');
+        const sel = document.getElementById('tabSelect');
         const FORM_TABS = ["appearance", "stock", "toasts", "admindb", "advanced"];
         const KEY = 'settingsActiveTab';
 
-        function show(tab) {
-            tabs.forEach(t => t.setAttribute('aria-selected', t.dataset.tab === tab ? 'true' : 'false'));
-            panels.forEach(p => p.hidden = (p.dataset.panel !== tab));
-            if (saveRow) saveRow.style.display = FORM_TABS.includes(tab) ? "flex" : "none";
+        // ---- layout helpers: calc header & tabs height → CSS vars
+        function updateHeights() {
+            const header = document.querySelector('header');
+            const fixed = document.querySelector('.tabs-fixed');
+            const headerH = header ? header.getBoundingClientRect().height : 56;
+            document.documentElement.style.setProperty('--header-h', headerH + 'px');
+            const tabsH = fixed ? fixed.getBoundingClientRect().height : 56;
+            document.documentElement.style.setProperty('--tabs-h', tabsH + 'px');
+        }
+        window.addEventListener('resize', () => { updateHeights(); }, { passive: true });
 
+        // ---- tab switching
+        function show(tab) {
+            // Desktop buttons
+            tabs.forEach(t => t.setAttribute('aria-selected', t.dataset.tab === tab ? 'true' : 'false'));
+            // Panels
+            panels.forEach(p => p.hidden = (p.dataset.panel !== tab));
+            // Save row visibility
+            if (saveRow) saveRow.style.display = FORM_TABS.includes(tab) ? "flex" : "none";
             // Deep link + persist
             const u = new URL(location.href);
             u.searchParams.set('tab', tab);
             history.replaceState(null, '', u);
             localStorage.setItem(KEY, tab);
-
-            // Mobile : assure la visibilité de l’onglet actif dans le scroll
-            const bar = document.querySelector('.tabs.sticky.sidebar-tabs');
-            const active = Array.from(tabs).find(t => t.dataset.tab === tab);
-            if (bar && active && window.matchMedia("(max-width: 719px)").matches) {
-                active.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
-            }
+            // Sync mobile select
+            if (sel && sel.value !== tab) sel.value = tab;
         }
 
-        // clic
+        // Click on desktop tabs
         tabs.forEach(t => t.addEventListener('click', (e) => {
             e.preventDefault(); e.stopPropagation();
             show(t.dataset.tab);
             t.focus();
         }, { passive: false }));
 
-        // a11y clavier (flèches)
-        const tablist = document.querySelector('.tabs[role="tablist"]');
+        // Change on mobile select
+        sel?.addEventListener('change', () => show(sel.value));
+
+        // a11y clavier (desktop)
+        const tablist = document.querySelector('.tabs.desktop[role="tablist"]');
         tablist?.addEventListener('keydown', (e) => {
             if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
             e.preventDefault();
@@ -201,13 +269,16 @@
             btn?.click(); btn?.focus();
         });
 
-        // init : hash > query > localStorage > défaut
+        // Init: hash > query > localStorage > default
         const params = new URL(location.href).searchParams;
         const urlTab = params.get('tab');
         const hashTab = (location.hash || '').replace('#', '');
         const initial = hashTab || urlTab || localStorage.getItem(KEY) || 'appearance';
         const exists = Array.from(panels).some(p => p.dataset.panel === initial);
         show(exists ? initial : 'appearance');
+
+        // Compute heights after first render
+        updateHeights();
     })();
 </script>
 {% endblock %}
