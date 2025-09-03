@@ -43,7 +43,7 @@ if [ -n "${UVICORN:-}" ]; then
   # uvicorn binaire dispo
   exec "${UVICORN}" "${MODULE}" \
     --host 0.0.0.0 \
-    --port 8099 \
+    --port 8098 \
     --app-dir "${APP_DIR}" \
     --proxy-headers
 else
@@ -51,7 +51,7 @@ else
   echo "[Domovra] uvicorn binaire introuvable, fallback python -m uvicorn"
   exec python3 -m uvicorn "${MODULE}" \
     --host 0.0.0.0 \
-    --port 8099 \
+    --port 8098 \
     --app-dir "${APP_DIR}" \
     --proxy-headers
 fi
