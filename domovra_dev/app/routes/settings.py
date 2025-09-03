@@ -168,7 +168,10 @@ def _counts_summary(db_path: str) -> dict:
 def build_about(db_path: str, settings_path: str) -> dict:
     cfg = _read_addon_config()
 
-    slug = str(cfg.get("slug", "domovra")).lower()
+    # Fallback version depuis variables d'env si config.json absent
+    env_version = os.environ.get("DOMOVRA_VERSION") or os.environ.get("ADDON_VERSION")
+
+    slug = str(cfg.get("slug", "domovra") or "domovra").lower()
     channel = "Stable"
     if "beta" in slug:
         channel = "Beta"
@@ -180,7 +183,7 @@ def build_about(db_path: str, settings_path: str) -> dict:
     return {
         "addon": {
             "name": cfg.get("name", "Domovra"),
-            "version": cfg.get("version", "n/a"),
+            "version": cfg.get("version") or env_version or "n/a",
             "slug": cfg.get("slug", "domovra"),
             "channel": channel,
             "url": cfg.get("url"),
@@ -204,6 +207,7 @@ def build_about(db_path: str, settings_path: str) -> dict:
         },
         "counts": _counts_summary(db_path),
     }
+
 
 # ======================
 # Routes
