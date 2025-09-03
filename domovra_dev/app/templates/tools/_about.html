@@ -171,15 +171,16 @@
         }
     }
 
-    /* Palier ≤720px : pile en 1 colonne */
+    /* Palier ≤720px : pile en 1 colonne (hotfix) */
     @media (max-width:720px) {
         .about-grid.v2 {
-            grid-template-columns: minmax(0, 1fr);
+            grid-template-columns: 1fr !important;
+            grid-auto-flow: row;
             gap: 12px;
         }
 
-        .abox.v2 {
-            grid-column: 1 / -1;
+        .about-grid.v2>.abox.v2 {
+            grid-column: 1 / -1 !important;
             padding: 12px 14px;
         }
     }
