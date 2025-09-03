@@ -112,29 +112,40 @@ def _file_size(path: str) -> str:
 
 def _read_addon_config() -> dict:
     """
-    Recherche config.json :
-    - racine de l’add-on (là où se trouvent run.sh / Dockerfile)
-    - domovra/config.json (cas spécial)
-    - racine repo (fallback)
+    Recherche config.json à plusieurs emplacements possibles.
+    Dans un add-on Home Assistant, le fichier n'est pas toujours copié dans l'image.
+    On remonte donc l'arbo + on teste quelques chemins connus.
     """
-    here = os.path.abspath(os.path.dirname(__file__))                 # …/domovra/app/routes
-    addon_root = os.path.abspath(os.path.join(here, "..", ".."))      # …/domovra/
-    repo_root = os.path.abspath(os.path.join(here, "..", "..", "..")) # …/
+    here = os.path.abspath(os.path.dirname(__file__))  # …/domovra/app/routes
+    candidates = []
 
-    candidates = [
-        os.path.join(addon_root, "config.json"),   # ✅ racine de l’add-on
-        os.path.join(addon_root, "domovra", "config.json"),
-        os.path.join(repo_root, "config.json"),
+    # 1) Remonte jusqu'à 6 niveaux et teste "config.json" à chaque niveau
+    cur = here
+    for _ in range(6):
+        candidates.append(os.path.join(cur, "config.json"))
+        cur = os.path.dirname(cur)
+
+    # 2) Chemins habituels dans un conteneur
+    candidates += [
+        os.path.join(os.getcwd(), "config.json"),
+        "/app/config.json",
+        "/usr/src/app/config.json",
+        "/config.json",
     ]
+
     for p in candidates:
         try:
             if os.path.exists(p):
                 with open(p, "r", encoding="utf-8") as f:
-                    return json.load(f)
+                    data = json.load(f)
+                    # Valide rapidement qu'on a bien un config d'add-on
+                    if isinstance(data, dict) and ("slug" in data or "name" in data or "version" in data):
+                        return data
         except Exception:
             pass
-    return {}
 
+    # Pas trouvé : on renvoie un dict vide, build_about() gèrera les fallbacks.
+    return {}
 
 def _counts_summary(db_path: str) -> dict:
     out = {"products": 0, "locations": 0, "lots": 0, "journal": 0}
