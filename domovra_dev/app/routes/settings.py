@@ -189,6 +189,7 @@ def build_about(db_path: str, settings_path: str) -> dict:
             "url": cfg.get("url"),
             "documentation": cfg.get("documentation"),
             "issue_tracker": cfg.get("issue_tracker"),
+            "changelog": changelog or None,
             "description": cfg.get("description"),
         },
         "sys": {

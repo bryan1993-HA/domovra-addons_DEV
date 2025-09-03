@@ -35,6 +35,12 @@
                 <dd><a href="{{ ABOUT.addon.issue_tracker }}" target="_blank" rel="noreferrer">Signaler un bug</a></dd>
             </div>
             {% endif %}
+            {% if ABOUT.addon.changelog %}
+            <div>
+                <dt>Changelog</dt>
+                <dd><a href="{{ ABOUT.addon.changelog }}" target="_blank" rel="noreferrer">Voir</a></dd>
+            </div>
+            {% endif %}
             {% if ABOUT.addon.description %}
             <div class="full">
                 <dt>Description</dt>
