@@ -4,9 +4,9 @@
 {% block content %}
 <div class="wrap" data-page="settings">
 
-    <!-- Barre FIXE sous le header : onglets (desktop) + select (mobile) -->
-    <div class="tabs-fixed" role="navigation" aria-label="Catégories de paramètres">
-        <!-- PC / Tablette : onglets en 1 ligne -->
+    <!-- Dock sticky SOUS le header, dans la colonne contenu -->
+    <div class="tabs-dock" role="navigation" aria-label="Catégories de paramètres">
+        <!-- PC / Tablette : onglets -->
         <nav class="tabs desktop" role="tablist">
             <button type="button" class="tab" data-tab="appearance" aria-selected="true">Apparence</button>
             <button type="button" class="tab" data-tab="stock">Produits & Stocks</button>
@@ -32,8 +32,6 @@
             </select>
         </div>
     </div>
-    <!-- Décalage de contenu = hauteur de la barre fixe -->
-    <div class="tabs-offset" aria-hidden="true"></div>
 
     {# ======= FORM RÉGLAGES UNIQUEMENT ======= #}
     <form id="settings-form" method="post" action="{{ BASE }}settings/save">
@@ -62,7 +60,7 @@
         </div>
     </form>
 
-    {# ======= PANELS SANS ÊTRE DANS LE FORM GLOBAL ======= #}
+    {# ======= PANELS HORS FORM ======= #}
     <section class="panel card" data-panel="locations" hidden>
         {% include "tools/_locations_full.html" %}
     </section>
@@ -76,73 +74,57 @@
 </div>
 
 <style>
-    /* Sécurité : [hidden] toujours caché */
+    /* sécurité */
     [hidden] {
         display: none !important;
     }
 
-    /* Variables dynamiques (alimentées par JS) */
+    /* ===== Dock sticky SOUS le header (dans la colonne contenu) ===== */
     :root {
         --header-h: 56px;
-        /* hauteur header détectée en JS */
-        --tabs-h: 56px;
-        /* hauteur de la barre fixe (calculée) */
-        --tabs-left: 0px;
-        /* X du contenu */
-        --tabs-width: 100vw;
-        /* largeur du contenu */
     }
 
-    /* ===== Barre FIXE alignée sur la colonne contenu, pas sur la sidebar ===== */
-    .tabs-fixed {
-        position: fixed;
+    /* si ton header change, ajuste ici */
+    .tabs-dock {
+        position: sticky;
         top: var(--header-h);
-        left: var(--tabs-left);
-        width: var(--tabs-width);
-        z-index: 100;
-        /* sous le header, au-dessus du contenu */
+        /* 👈 s'accroche sous le header */
+        z-index: 7;
         background: var(--bg-body);
         border-bottom: 1px solid var(--line);
-        box-shadow: 0 1px 0 rgba(0, 0, 0, .06);
+        padding: 6px 0 10px;
+        margin-bottom: 12px;
     }
 
-    .tabs-offset {
-        height: var(--tabs-h);
-    }
-
-    /* pousse le contenu sous la barre */
-
-    /* ===== Desktop : onglets style sidebar, 1 ligne centrée ===== */
+    /* Desktop : une ligne centrée, scroll discret si ça dépasse */
     .tabs.desktop {
         display: flex;
         flex-wrap: nowrap;
-        /* 1 ligne */
+        /* une seule ligne */
         justify-content: center;
-        /* centré si ça tient */
+        /* centré */
         gap: 8px;
-        padding: 8px 8px 10px;
+        padding: 2px 8px;
         white-space: nowrap;
         overflow-x: auto;
-        /* si ça déborde, scroll horizontal discret */
-        scrollbar-width: none;
+        overflow-y: hidden;
         -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
     }
 
     .tabs.desktop::-webkit-scrollbar {
         display: none;
     }
 
+    /* Boutons = même style que la sidebar */
     .tabs.desktop .tab {
         display: flex;
         align-items: center;
         gap: 8px;
         padding: 10px 12px;
         border: 1px solid #242932;
-        /* = .menu a */
         background: #151922;
-        /* = .menu a */
         border-radius: 10px;
-        /* = .menu a */
         cursor: pointer;
         color: inherit;
         -webkit-tap-highlight-color: transparent;
@@ -166,10 +148,10 @@
         outline-offset: 2px;
     }
 
-    /* ===== Mobile : select compact ===== */
+    /* Mobile : select compact, sticky aussi car dans .tabs-dock */
     .tabs-select.mobile {
         display: none;
-        padding: 8px;
+        padding: 0 8px;
     }
 
     .tabs-select.mobile select {
@@ -191,7 +173,7 @@
         }
     }
 
-    /* Bouton Enregistrer sticky en bas (inchangé) */
+    /* Bouton Enregistrer sticky en bas */
     .sticky-save {
         position: sticky;
         bottom: 8px;
@@ -213,56 +195,27 @@
         const FORM_TABS = ["appearance", "stock", "toasts", "admindb", "advanced"];
         const KEY = 'settingsActiveTab';
 
-        // ---- Layout: positionner la barre fixe au-dessus de la colonne contenu
-        function updateFixedBar() {
-            const header = document.querySelector('header');
-            const fixed = document.querySelector('.tabs-fixed');
-            const wrap = document.querySelector('.wrap[data-page="settings"]');
-
-            const headerH = header ? header.getBoundingClientRect().height : 56;
-            document.documentElement.style.setProperty('--header-h', headerH + 'px');
-
-            if (wrap) {
-                const r = wrap.getBoundingClientRect();
-                document.documentElement.style.setProperty('--tabs-left', r.left + 'px');
-                document.documentElement.style.setProperty('--tabs-width', r.width + 'px');
-            }
-
-            if (fixed) {
-                // calcule la hauteur réelle pour l’offset
-                const h = fixed.getBoundingClientRect().height;
-                document.documentElement.style.setProperty('--tabs-h', h + 'px');
-            }
-        }
-        window.addEventListener('resize', updateFixedBar, { passive: true });
-        // si le layout de l'aside change (ex: sidebar compacte), on recalcule après la frame
-        window.addEventListener('transitionend', updateFixedBar, { passive: true });
-
-        // ---- Comportement onglets
         function show(tab) {
-            // Desktop buttons
             tabs.forEach(t => t.setAttribute('aria-selected', t.dataset.tab === tab ? 'true' : 'false'));
-            // Panels
             panels.forEach(p => p.hidden = (p.dataset.panel !== tab));
-            // Save row visibility
             if (saveRow) saveRow.style.display = FORM_TABS.includes(tab) ? "flex" : "none";
-            // Deep link + persist
+
             const u = new URL(location.href);
             u.searchParams.set('tab', tab);
             history.replaceState(null, '', u);
             localStorage.setItem(KEY, tab);
-            // Sync mobile select
+
             if (sel && sel.value !== tab) sel.value = tab;
         }
 
-        // Click sur onglets desktop
+        // clic onglets desktop
         tabs.forEach(t => t.addEventListener('click', (e) => {
             e.preventDefault(); e.stopPropagation();
             show(t.dataset.tab);
             t.focus();
         }, { passive: false }));
 
-        // Changement du select mobile
+        // change select mobile
         sel?.addEventListener('change', () => show(sel.value));
 
         // a11y clavier (desktop)
@@ -281,16 +234,11 @@
             btn?.click(); btn?.focus();
         });
 
-        // Init : hash > query > localStorage > défaut
+        // init
         const params = new URL(location.href).searchParams;
-        const urlTab = params.get('tab');
-        const hashTab = (location.hash || '').replace('#', '');
-        const initial = hashTab || urlTab || localStorage.getItem(KEY) || 'appearance';
+        const initial = (location.hash || '').replace('#', '') || params.get('tab') || localStorage.getItem(KEY) || 'appearance';
         const exists = Array.from(panels).some(p => p.dataset.panel === initial);
         show(exists ? initial : 'appearance');
-
-        // Calages init
-        requestAnimationFrame(updateFixedBar);
     })();
 </script>
 {% endblock %}
