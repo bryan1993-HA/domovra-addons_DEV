@@ -59,93 +59,75 @@
 </div>
 
 <style>
-    /* 🔒 Empêche tout CSS de forcer l’affichage des éléments [hidden] */
+    /* 🔒 ne jamais afficher [hidden] */
     [hidden] {
         display: none !important;
     }
 
-    /* ===== Barre d’onglets (look “sidebar chips”, sticky, mobile-friendly) ===== */
-    .tabs-bar {
+    /* ===== Barre d’onglets : même style que .menu a ===== */
+    .tabs.sticky {
         position: sticky;
         top: 56px;
-        /* ajuste selon la hauteur de ton header */
+        /* ajuste si ton header change */
         z-index: 7;
         padding: 8px 0 10px;
-        background: var(--bg, transparent);
-        border-bottom: 1px solid var(--line, rgba(125, 125, 125, .18));
+        background: var(--bg-body, var(--bg, #0b0d10));
+        border-bottom: 1px solid var(--line);
         margin-bottom: 12px;
     }
 
-    /* Conteneur scrollable horizontal sans scrollbar visible */
-    .tabs.pills {
+    .tabs {
         display: flex;
-        gap: 10px;
+        gap: 8px;
+        /* scroll horizontal propre en mobile */
         overflow-x: auto;
         overflow-y: hidden;
         -webkit-overflow-scrolling: touch;
         scrollbar-width: none;
-        padding: 2px 4px;
-        scroll-snap-type: x proximity;
-        /* fondu masqué aux extrémités */
+        padding: 2px 2px;
         mask-image: linear-gradient(90deg, transparent 0, #000 16px, #000 calc(100% - 16px), transparent 100%);
     }
 
-    .tabs.pills::-webkit-scrollbar {
+    .tabs::-webkit-scrollbar {
         display: none;
     }
 
-    /* Pastilles harmonisées avec la sidebar */
     .tab {
-        scroll-snap-align: start;
-        padding: 8px 12px;
-        border-radius: 999px;
-        border: 1px solid var(--line, rgba(125, 125, 125, .25));
-        background: color-mix(in oklab, var(--bg, #000) 96%, transparent);
-        color: inherit;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 12px;
+        border: 1px solid #242932;
+        /* idem sidebar */
+        background: #151922;
+        /* idem sidebar */
+        border-radius: 10px;
+        /* idem sidebar */
         cursor: pointer;
-        user-select: none;
-        transition: background .15s ease, box-shadow .15s ease, border-color .15s ease;
+        color: inherit;
         -webkit-tap-highlight-color: transparent;
+        transition: filter .12s ease, border-color .12s ease, box-shadow .12s ease, background .12s ease;
+        white-space: nowrap;
         font-weight: 500;
+        scroll-snap-align: start;
     }
 
     .tab:hover {
-        background: color-mix(in oklab, var(--bg, #000) 92%, transparent);
-        border-color: rgba(125, 125, 125, .35);
+        filter: brightness(1.05);
     }
 
     .tab[aria-selected="true"] {
-        background: color-mix(in oklab, var(--bg, #000) 88%, transparent);
-        box-shadow: 0 0 0 2px rgba(127, 127, 255, .16) inset;
-        border-color: rgba(127, 127, 255, .35);
+        border-color: #4f46e5;
+        /* actif = violet, idem .menu a.active */
+        box-shadow: 0 0 0 1px #4f46e5 inset;
     }
 
     .tab:focus-visible {
-        outline: 2px solid color-mix(in oklab, #6ea8fe 60%, #000);
+        outline: 2px solid #4f46e5;
         outline-offset: 2px;
-        border-color: transparent;
     }
 
-    /* Mobile : gros tap targets + resserrer verticalement */
-    @media (max-width: 720px) {
-        .tabs-bar {
-            top: 52px;
-            padding: 6px 0 8px;
-        }
-
-        .tab {
-            padding: 10px 14px;
-        }
-    }
-
-    @media (max-width: 380px) {
-        .tab {
-            padding: 9px 12px;
-            font-size: .95rem;
-        }
-    }
-
-    /* ===== Bouton Enregistrer sticky ===== */
+    /* Bouton Enregistrer sticky (inchangé) */
     .sticky-save {
         position: sticky;
         bottom: 8px;
@@ -154,7 +136,14 @@
         background: linear-gradient(180deg, rgba(0, 0, 0, 0), rgba(0, 0, 0, .05));
         border-top: 1px solid var(--line);
     }
+
+    /* Cartes / panel (inchangés) */
+    .tab[aria-selected="true"] {
+        /* garde la compat avec anciens thèmes */
+        background: #151922;
+    }
 </style>
+
 {% endblock %}
 
 {% block scripts %}
