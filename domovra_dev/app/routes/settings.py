@@ -178,6 +178,14 @@ def build_about(db_path: str, settings_path: str) -> dict:
     if "dev" in slug or "test" in slug:
         channel = "DEV"
 
+    # --- NEW: URLs projet / changelog
+    repo_url = (cfg.get("url") or "").strip()
+    changelog = (cfg.get("changelog") or "").strip()
+    if not changelog and "github.com" in repo_url:
+        base = repo_url[:-1] if repo_url.endswith("/") else repo_url
+        # priorité aux releases ; change en /blob/main/CHANGELOG.md si tu préfères
+        changelog = base + "/releases"
+
     log_path = "/data/domovra.log"
 
     return {
@@ -186,10 +194,10 @@ def build_about(db_path: str, settings_path: str) -> dict:
             "version": cfg.get("version") or env_version or "n/a",
             "slug": cfg.get("slug", "domovra"),
             "channel": channel,
-            "url": cfg.get("url"),
+            "url": repo_url or None,
             "documentation": cfg.get("documentation"),
             "issue_tracker": cfg.get("issue_tracker"),
-            "changelog": changelog or None,
+            "changelog": changelog or None,  # <- corrigé
             "description": cfg.get("description"),
         },
         "sys": {
@@ -206,6 +214,7 @@ def build_about(db_path: str, settings_path: str) -> dict:
             "log_size": _file_size(log_path),
         },
     }
+
 
 
 # ======================
