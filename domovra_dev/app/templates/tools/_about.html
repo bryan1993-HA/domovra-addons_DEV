@@ -2,7 +2,7 @@
 
 <div class="about-grid v2">
     <!-- ADD-ON -->
-    <section class="abox v2">
+    <section class="abox v2 addon">
         <header class="abox-h">
             <div class="title">
                 <strong>{{ ABOUT.addon.name|default('Domovra') }}</strong>
@@ -45,7 +45,7 @@
     </section>
 
     <!-- SYSTÈME -->
-    <section class="abox v2">
+    <section class="abox v2 sys">
         <h3 class="abox-t">Système</h3>
         <dl class="kv2">
             <div>
@@ -68,7 +68,7 @@
     </section>
 
     <!-- DONNÉES -->
-    <section class="abox v2">
+    <section class="abox v2 data">
         <h3 class="abox-t">Données</h3>
         <dl class="kv2">
             <div class="full">
@@ -90,7 +90,7 @@
     </section>
 
     <!-- COMPORTEMENT & UI -->
-    <section class="abox v2">
+    <section class="abox v2 ui">
         <h3 class="abox-t">Comportement & UI</h3>
         <dl class="kv2">
             <div>
@@ -116,3 +116,193 @@
         </dl>
     </section>
 </div>
+
+<style>
+    <style>
+    /* ===== À propos v2 (stable + responsive) ===== */
+
+    /* Grille principale */
+    .about-grid.v2 {
+        display: grid;
+        gap: 16px;
+        grid-template-columns: repeat(12, 1fr);
+    }
+
+    /* Cartes */
+    .abox.v2 {
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 14px 16px;
+        background: transparent;
+        grid-column: span 6;
+        /* 2 colonnes logiques par défaut */
+    }
+
+    /* Placement desktop large (≥1100px) */
+    .abox.v2.addon {
+        grid-column: span 6;
+    }
+
+    /* Add-on */
+    .abox.v2.sys {
+        grid-column: span 3;
+    }
+
+    /* Système */
+    .abox.v2.data {
+        grid-column: span 3;
+    }
+
+    /* Données */
+    .abox.v2.ui {
+        grid-column: span 6;
+    }
+
+    /* UI */
+
+    /* Palier ≤1100px : tout en 2 colonnes */
+    @media (max-width:1100px) {
+        .about-grid.v2 {
+            grid-template-columns: repeat(6, 1fr);
+        }
+
+        .abox.v2 {
+            grid-column: span 6;
+        }
+    }
+
+    /* Palier ≤720px : pile 1 colonne, fini les chevauchements */
+    @media (max-width:720px) {
+        .about-grid.v2 {
+            grid-template-columns: 1fr;
+            gap: 12px;
+        }
+
+        .abox.v2 {
+            grid-column: 1 / -1;
+            padding: 12px 14px;
+        }
+    }
+
+    /* En-têtes & badges */
+    .abox-h {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        margin-bottom: 8px;
+    }
+
+    .abox-h .title {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .abox-h .sub {
+        color: var(--muted-fg, #8a8a8a);
+        font-size: .95rem;
+    }
+
+    .abox-t {
+        margin: 0 0 8px;
+        font-size: 1.02rem;
+    }
+
+    .badge {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        font-size: .85rem;
+        line-height: 1.2;
+        white-space: nowrap;
+    }
+
+    .badge.version {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    .badge.channel.beta {
+        border-color: #c08b00;
+    }
+
+    .badge.channel.dev {
+        border-color: #7c6cff;
+    }
+
+    /* Grille terme/valeur (zéro chevauchement) */
+    .kv2 {
+        display: grid;
+        grid-template-columns: 42% 58%;
+        gap: 8px 12px;
+        align-items: start;
+    }
+
+    .kv2 .full {
+        grid-column: 1 / -1;
+    }
+
+    .kv2 dt {
+        color: var(--muted-fg, #8a8a8a);
+        font-weight: 600;
+    }
+
+    .kv2 dd {
+        margin: 0;
+        min-width: 0;
+    }
+
+    .mono {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    .break {
+        overflow-wrap: anywhere;
+        word-break: break-word;
+    }
+
+    .muted {
+        color: var(--muted-fg, #8a8a8a);
+    }
+
+    .abox.v2,
+    .kv2 dd,
+    .kv2 dt {
+        line-height: 1.35;
+    }
+
+    /* Palier ≤540px : terme/valeur en pile */
+    @media (max-width:540px) {
+        .kv2 {
+            grid-template-columns: 1fr;
+            gap: 6px 10px;
+        }
+
+        .abox.v2 {
+            padding: 12px;
+        }
+
+        .badge {
+            margin-left: 0;
+        }
+    }
+
+    /* Palier ≤400px : micro-ajustements */
+    @media (max-width:400px) {
+        .badge {
+            font-size: .8rem;
+            padding: 2px 6px;
+        }
+
+        .kv2 {
+            gap: 5px 8px;
+        }
+
+        .abox.v2 {
+            padding: 10px 12px;
+        }
+    }
+</style>
+
+</style>
