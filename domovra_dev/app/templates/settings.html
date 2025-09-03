@@ -5,7 +5,7 @@
 <div class="wrap" data-page="settings">
 
     <!-- Onglets -->
-    <nav class="tabs" role="tablist" aria-label="Catégories de paramètres">
+    <nav class="tabs sticky" role="tablist" aria-label="Catégories de paramètres">
         <button type="button" class="tab" data-tab="appearance" aria-selected="true">Apparence</button>
         <button type="button" class="tab" data-tab="stock">Produits & Stocks</button>
         <button type="button" class="tab" data-tab="toasts">Notifications</button>
@@ -13,6 +13,7 @@
         <button type="button" class="tab" data-tab="admindb">Admin DB</button>
         <button type="button" class="tab" data-tab="advanced">Avancés</button>
         <button type="button" class="tab" data-tab="journal">Journal</button>
+        <button type="button" class="tab" data-tab="about">À propos</button> <!-- NEW -->
     </nav>
 
     {# ======= FORM RÉGLAGES UNIQUEMENT ======= #}
@@ -37,7 +38,7 @@
             {% include "tools/_advanced.html" %}
         </section>
 
-        <div class="row save-row" style="justify-content:flex-end">
+        <div class="save-row sticky-save" style="justify-content:flex-end">
             <button class="secondary" type="submit">Enregistrer</button>
         </div>
     </form>
@@ -49,6 +50,10 @@
     <section class="panel card" data-panel="journal" hidden>
         {% include "tools/_journal_full.html" %}
     </section>
+    <section class="panel card" data-panel="about" hidden>
+        {% include "tools/_about.html" %}
+    </section>
+
 
 </div>
 
@@ -80,6 +85,30 @@
     .tab[aria-selected="true"] {
         background: rgba(255, 255, 255, .06);
     }
+
+    .tabs.sticky {
+        position: sticky;
+        top: 56px;
+        z-index: 4;
+        padding: 6px 2px 10px;
+        background: var(--bg, transparent);
+        border-bottom: 1px solid var(--line);
+        margin-bottom: 12px;
+    }
+
+    .tab[aria-selected="true"] {
+        background: rgba(127, 127, 255, .08);
+        box-shadow: inset 0 0 0 2px rgba(127, 127, 255, .12);
+    }
+
+    .sticky-save {
+        position: sticky;
+        bottom: 8px;
+        z-index: 3;
+        padding-top: 8px;
+        background: linear-gradient(180deg, rgba(0, 0, 0, 0), rgba(0, 0, 0, .05));
+        border-top: 1px solid var(--line);
+    }
 </style>
 {% endblock %}
 
@@ -88,33 +117,53 @@
     (function () {
         const tabs = document.querySelectorAll('.tabs .tab');
         const panels = document.querySelectorAll('[data-panel]');
-        const saveRow = document.querySelector('.save-row'); // 👈 le bouton global
+        const saveRow = document.querySelector('.save-row');
+        const FORM_TABS = ["appearance", "stock", "toasts", "admindb", "advanced"];
         const KEY = 'settingsActiveTab';
 
         function show(tab) {
             tabs.forEach(t => t.setAttribute('aria-selected', t.dataset.tab === tab ? 'true' : 'false'));
             panels.forEach(p => p.hidden = (p.dataset.panel !== tab));
 
-            // Affiche le bouton seulement pour les onglets du form global
-            if (saveRow) {
-                const isFormTab = ["appearance", "stock", "toasts", "admindb", "advanced"].includes(tab);
-                saveRow.style.display = isFormTab ? "flex" : "none";
-            }
+            if (saveRow) saveRow.style.display = FORM_TABS.includes(tab) ? "flex" : "none";
 
             const u = new URL(location.href);
             u.searchParams.set('tab', tab);
-            history.replaceState(null, '', u);
+            history.replaceState(null, '', '#' + tab);   // hash
+            history.replaceState(null, '', u);           // query aussi
             localStorage.setItem(KEY, tab);
         }
 
+        // clic
         tabs.forEach(t => t.addEventListener('click', (e) => {
-            e.preventDefault();    // 👈 crucial sur mobile
-            e.stopPropagation();
+            e.preventDefault(); e.stopPropagation();
             show(t.dataset.tab);
+            t.focus();
         }, { passive: false }));
 
-        const urlTab = new URL(location.href).searchParams.get('tab');
-        show(urlTab || localStorage.getItem(KEY) || 'appearance');
+        // a11y clavier (flèches)
+        document.querySelector('.tabs').addEventListener('keydown', (e) => {
+            if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+            e.preventDefault();
+            const list = Array.from(tabs);
+            const i = list.findIndex(b => b.getAttribute('aria-selected') === 'true');
+            let ni = i;
+            if (e.key === 'ArrowRight') ni = (i + 1) % list.length;
+            if (e.key === 'ArrowLeft') ni = (i - 1 + list.length) % list.length;
+            if (e.key === 'Home') ni = 0;
+            if (e.key === 'End') ni = list.length - 1;
+            const btn = list[ni];
+            btn?.click();
+            btn?.focus();
+        });
+
+        // init : hash > query > localStorage > défaut
+        const params = new URL(location.href).searchParams;
+        const urlTab = params.get('tab');
+        const hashTab = (location.hash || '').replace('#', '');
+        const initial = hashTab || urlTab || localStorage.getItem(KEY) || 'appearance';
+        const exists = Array.from(panels).some(p => p.dataset.panel === initial);
+        show(exists ? initial : 'appearance');
     })();
 </script>
 {% endblock %}

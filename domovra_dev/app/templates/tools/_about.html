@@ -1,0 +1,168 @@
+<h2 style="margin-top:0">À propos / Infos système</h2>
+
+<div class="about-grid">
+    <section class="abox">
+        <h3>Add-on</h3>
+        <dl class="kv">
+            <div>
+                <dt>Nom</dt>
+                <dd>{{ ABOUT.addon.name|default('Domovra') }}</dd>
+            </div>
+            <div>
+                <dt>Version</dt>
+                <dd><code>{{ ABOUT.addon.version|default('n/a') }}</code></dd>
+            </div>
+            <div>
+                <dt>Canal</dt>
+                <dd>{{ ABOUT.addon.channel|default('Stable') }}</dd>
+            </div>
+            <div>
+                <dt>Slug</dt>
+                <dd><code>{{ ABOUT.addon.slug|default('domovra') }}</code></dd>
+            </div>
+            {% if ABOUT.addon.url %}<div>
+                <dt>Projet</dt>
+                <dd><a href="{{ ABOUT.addon.url }}" target="_blank" rel="noreferrer">GitHub</a></dd>
+            </div>{% endif %}
+            {% if ABOUT.addon.documentation %}<div>
+                <dt>Documentation</dt>
+                <dd><a href="{{ ABOUT.addon.documentation }}" target="_blank" rel="noreferrer">Ouvrir</a></dd>
+            </div>{% endif %}
+            {% if ABOUT.addon.issue_tracker %}<div>
+                <dt>Issues</dt>
+                <dd><a href="{{ ABOUT.addon.issue_tracker }}" target="_blank" rel="noreferrer">Signaler un bug</a></dd>
+            </div>{% endif %}
+        </dl>
+    </section>
+
+    <section class="abox">
+        <h3>Système</h3>
+        <dl class="kv">
+            <div>
+                <dt>Python</dt>
+                <dd>{{ ABOUT.sys.python|default('n/a') }}</dd>
+            </div>
+            <div>
+                <dt>FastAPI</dt>
+                <dd>{{ ABOUT.sys.fastapi|default('n/a') }}</dd>
+            </div>
+            <div>
+                <dt>Jinja2</dt>
+                <dd>{{ ABOUT.sys.jinja2|default('n/a') }}</dd>
+            </div>
+            <div>
+                <dt>SQLite</dt>
+                <dd>{{ ABOUT.sys.sqlite_lib|default('n/a') }}</dd>
+            </div>
+            <div>
+                <dt>Heure serveur</dt>
+                <dd>{{ ABOUT.sys.server_time|default('n/a') }}</dd>
+            </div>
+        </dl>
+    </section>
+
+    <section class="abox">
+        <h3>Données</h3>
+        <dl class="kv">
+            <div>
+                <dt>Base</dt>
+                <dd><code>{{ ABOUT.sys.db_path|default('/data/domovra.sqlite3') }}</code> — {{
+                    ABOUT.sys.db_size|default('n/a') }}</dd>
+            </div>
+            <div>
+                <dt>Paramètres</dt>
+                <dd><code>{{ ABOUT.sys.settings_path|default('/data/settings.json') }}</code> — {{
+                    ABOUT.sys.settings_size|default('n/a') }}</dd>
+            </div>
+            <div>
+                <dt>Journal</dt>
+                <dd><code>{{ ABOUT.sys.log_path|default('/data/domovra.log') }}</code> — {{
+                    ABOUT.sys.log_size|default('n/a') }}</dd>
+            </div>
+            <div>
+                <dt>Produits</dt>
+                <dd>{{ ABOUT.counts.products|default(0) }}</dd>
+            </div>
+            <div>
+                <dt>Emplacements</dt>
+                <dd>{{ ABOUT.counts.locations|default(0) }}</dd>
+            </div>
+            <div>
+                <dt>Lots</dt>
+                <dd>{{ ABOUT.counts.lots|default(0) }}</dd>
+            </div>
+            <div>
+                <dt>Entrées journal</dt>
+                <dd>{{ ABOUT.counts.journal|default(0) }}</dd>
+            </div>
+        </dl>
+    </section>
+
+    <section class="abox">
+        <h3>Comportement & UI</h3>
+        <dl class="kv">
+            <div>
+                <dt>Thème</dt>
+                <dd>{{ SETTINGS.theme|default('auto') }}</dd>
+            </div>
+            <div>
+                <dt>Sidebar compacte</dt>
+                <dd>{{ 'Oui' if SETTINGS.sidebar_compact else 'Non' }}</dd>
+            </div>
+            <div>
+                <dt>Toast (durée)</dt>
+                <dd>{{ SETTINGS.toast_duration|default(3000) }} ms</dd>
+            </div>
+            <div>
+                <dt>Seuil Bientôt</dt>
+                <dd>{{ SETTINGS.retention_days_warning|default(5) }} jours</dd>
+            </div>
+            <div>
+                <dt>Seuil Urgent</dt>
+                <dd>{{ SETTINGS.retention_days_critical|default(2) }} jours</dd>
+            </div>
+        </dl>
+    </section>
+</div>
+
+<style>
+    .about-grid {
+        display: grid;
+        gap: 16px;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr))
+    }
+
+    .abox {
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 14px 16px;
+        background: transparent
+    }
+
+    .abox h3 {
+        margin: 0 0 10px;
+        font-size: 1.02rem
+    }
+
+    .kv {
+        display: grid;
+        gap: 6px 12px
+    }
+
+    .kv>div {
+        display: grid;
+        grid-template-columns: 42% 58%;
+        gap: 8px;
+        align-items: baseline
+    }
+
+    .kv dt {
+        color: var(--muted-fg, #888);
+        font-weight: 500
+    }
+
+    .kv dd {
+        margin: 0;
+        word-break: break-word
+    }
+</style>
