@@ -1,6 +1,12 @@
 # domovra/app/routes/settings.py
 import time
+import os
+import json
+import platform
 import sqlite3
+from datetime import datetime
+from importlib.metadata import version as pkg_version, PackageNotFoundError
+
 from fastapi import APIRouter, Request, Form, Query
 from fastapi.responses import HTMLResponse, RedirectResponse, PlainTextResponse
 
@@ -10,12 +16,12 @@ from services.events import log_event, list_events  # Journal
 # --- Settings store (avec fallback inline si le module n'existe pas) ---
 try:
     from settings_store import load_settings, save_settings  # type: ignore
+    SETTINGS_PATH_FALLBACK = "/data/settings.json"  # utilisé seulement pour ABOUT
 except Exception:  # pragma: no cover
-    import os
-    import json
     from pathlib import Path
 
     SETTINGS_FILE = Path("/data/settings.json")
+    SETTINGS_PATH_FALLBACK = str(SETTINGS_FILE)
 
     DEFAULTS = {
         "theme": "auto",
@@ -81,12 +87,119 @@ from config import DB_PATH, get_retention_thresholds
 
 router = APIRouter()
 
+# ======================
+# Helpers pour ABOUT
+# ======================
+
+def _safe_pkg_version(name: str) -> str:
+    try:
+        return pkg_version(name)
+    except PackageNotFoundError:
+        return "n/a"
+    except Exception:
+        return "n/a"
+
+def _file_size(path: str) -> str:
+    try:
+        b = os.path.getsize(path)
+    except OSError:
+        return "n/a"
+    for u in ("B", "KB", "MB", "GB", "TB"):
+        if b < 1024:
+            return f"{b:.0f} {u}"
+        b /= 1024
+    return f"{b:.1f} PB"
+
+def _read_addon_config() -> dict:
+    """
+    Tente plusieurs emplacements possibles de config.json :
+    - domovra/config.json (cas add-on)
+    - repo root/config.json (fallback)
+    """
+    here = os.path.abspath(os.path.dirname(__file__))                 # …/domovra/app/routes
+    addon_dir = os.path.abspath(os.path.join(here, "..", ".."))       # …/domovra/
+    repo_root = os.path.abspath(os.path.join(here, "..", "..", "..")) # …/
+
+    candidates = [
+        os.path.join(addon_dir, "config.json"),
+        os.path.join(repo_root, "config.json"),
+    ]
+    for p in candidates:
+        try:
+            if os.path.exists(p):
+                with open(p, "r", encoding="utf-8") as f:
+                    return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+def _counts_summary(db_path: str) -> dict:
+    out = {"products": 0, "locations": 0, "lots": 0, "journal": 0}
+    try:
+        with sqlite3.connect(db_path) as c:
+            c.row_factory = sqlite3.Row
+            for table, key in (("products", "products"),
+                               ("locations", "locations"),
+                               ("lots", "lots"),
+                               ("journal", "journal")):
+                try:
+                    row = c.execute(f"SELECT COUNT(*) AS c FROM {table}").fetchone()
+                    out[key] = int(row["c"] or 0)
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    return out
+
+def build_about(db_path: str, settings_path: str) -> dict:
+    cfg = _read_addon_config()
+
+    slug = str(cfg.get("slug", "domovra")).lower()
+    channel = "Stable"
+    if "beta" in slug:
+        channel = "Beta"
+    if "dev" in slug or "test" in slug:
+        channel = "DEV"
+
+    log_path = "/data/domovra.log"
+
+    return {
+        "addon": {
+            "name": cfg.get("name", "Domovra"),
+            "version": cfg.get("version", "n/a"),
+            "slug": cfg.get("slug", "domovra"),
+            "channel": channel,
+            "url": cfg.get("url"),
+            "documentation": cfg.get("documentation"),
+            "issue_tracker": cfg.get("issue_tracker"),
+            "description": cfg.get("description"),
+        },
+        "sys": {
+            "python": platform.python_version(),
+            "fastapi": _safe_pkg_version("fastapi"),
+            "jinja2": _safe_pkg_version("jinja2"),
+            "uvicorn": _safe_pkg_version("uvicorn"),
+            "sqlite_lib": sqlite3.sqlite_version,
+            "db_path": db_path,
+            "db_size": _file_size(db_path),
+            "settings_path": settings_path,
+            "settings_size": _file_size(settings_path),
+            "log_path": log_path,
+            "log_size": _file_size(log_path),
+            "server_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        },
+        "counts": _counts_summary(db_path),
+    }
+
+# ======================
+# Routes
+# ======================
 
 @router.get("/settings", response_class=HTMLResponse)
 def settings_page(
     request: Request,
-    tab: str = Query("appearance"),           # ?tab=locations|journal|admindb|...
-    jlimit: int = Query(200, alias="jlimit"), # nb de lignes à afficher dans Journal
+    tab: str = Query("appearance"),            # ?tab=locations|journal|admindb|...
+    jlimit: int = Query(200, alias="jlimit"),  # nb de lignes à afficher dans Journal
 ):
     base = ingress_base(request)
     try:
@@ -129,6 +242,9 @@ def settings_page(
             """).fetchall()
         db_tables = [r["name"] for r in rows]
 
+        # ---- ABOUT (version, chemins, tailles, runtime, counts) ----
+        about = build_about(DB_PATH, SETTINGS_PATH_FALLBACK)
+
         return render_with_env(
             request.app.state.templates,
             "settings.html",
@@ -149,6 +265,8 @@ def settings_page(
             # Seuils (utile si tu veux les afficher dans l’UI)
             WARNING_DAYS=WARN_DAYS,
             CRITICAL_DAYS=CRIT_DAYS,
+            # À propos
+            ABOUT=about,
         )
     except Exception as e:
         return PlainTextResponse(f"Erreur chargement paramètres: {e}", status_code=500)
