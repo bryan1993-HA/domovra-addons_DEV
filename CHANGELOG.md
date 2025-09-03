@@ -6,8 +6,8 @@ ajout de la page _about.html
 modifications des pages 
 Settings.html
 settings.py
-
-
+run.sh
+Dockerfile
 
 ## [1.4.1] - 2025-09-03 - 02:59
 ### Changed

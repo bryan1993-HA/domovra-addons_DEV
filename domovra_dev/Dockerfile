@@ -11,9 +11,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 RUN apk add --no-cache python3 py3-pip
 
 WORKDIR ${APP_HOME}
+# Code de l'app
 COPY app ${APP_HOME}/
+# ⬅️ Ajoute le manifest de l'add-on dans l'image
+COPY config.json ${APP_HOME}/config.json
 
-# ⬇️ ICI : on installe aussi python-multipart
+# Dépendances (inclut python-multipart)
 RUN python3 -m venv ${VENV_PATH} \
  && ${VENV_PATH}/bin/pip install --no-cache-dir \
     fastapi "uvicorn[standard]" jinja2 python-multipart
@@ -21,5 +24,6 @@ RUN python3 -m venv ${VENV_PATH} \
 COPY run.sh /run.sh
 RUN chmod +x /run.sh
 
-EXPOSE 8099
+# (optionnel) garder 8099 ou aligne avec run.sh (8098). Ça n'impacte pas Ingress.
+EXPOSE 8098
 CMD ["/run.sh"]
