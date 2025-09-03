@@ -4,17 +4,19 @@
 {% block content %}
 <div class="wrap" data-page="settings">
 
-    <!-- Onglets -->
-    <nav class="tabs sticky" role="tablist" aria-label="Catégories de paramètres">
-        <button type="button" class="tab" data-tab="appearance" aria-selected="true">Apparence</button>
-        <button type="button" class="tab" data-tab="stock">Produits & Stocks</button>
-        <button type="button" class="tab" data-tab="toasts">Notifications</button>
-        <button type="button" class="tab" data-tab="locations">Emplacements</button>
-        <button type="button" class="tab" data-tab="admindb">Admin DB</button>
-        <button type="button" class="tab" data-tab="advanced">Avancés</button>
-        <button type="button" class="tab" data-tab="journal">Journal</button>
-        <button type="button" class="tab" data-tab="about">À propos</button>
-    </nav>
+    <!-- Barre d’onglets moderne (sticky + scrollable) -->
+    <div class="tabs-bar">
+        <nav class="tabs pills" role="tablist" aria-label="Catégories de paramètres">
+            <button type="button" class="tab" data-tab="appearance" aria-selected="true">Apparence</button>
+            <button type="button" class="tab" data-tab="stock">Produits & Stocks</button>
+            <button type="button" class="tab" data-tab="toasts">Notifications</button>
+            <button type="button" class="tab" data-tab="locations">Emplacements</button>
+            <button type="button" class="tab" data-tab="admindb">Admin DB</button>
+            <button type="button" class="tab" data-tab="advanced">Avancés</button>
+            <button type="button" class="tab" data-tab="journal">Journal</button>
+            <button type="button" class="tab" data-tab="about">À propos</button>
+        </nav>
+    </div>
 
     {# ======= FORM RÉGLAGES UNIQUEMENT ======= #}
     <form id="settings-form" method="post" action="{{ BASE }}settings/save">
@@ -54,7 +56,6 @@
         {% include "tools/_about.html" %}
     </section>
 
-
 </div>
 
 <style>
@@ -63,44 +64,88 @@
         display: none !important;
     }
 
-    .tabs {
-        display: flex;
-        gap: .5rem;
-        margin: 0 0 1rem 0;
-        flex-wrap: wrap;
-        position: relative;
-        z-index: 2;
-        /* évite d’être recouvert par un overlay */
-    }
-
-    .tab {
-        padding: .45rem .75rem;
-        border-radius: .75rem;
-        border: 1px solid var(--line);
-        background: transparent;
-        cursor: pointer;
-        -webkit-tap-highlight-color: transparent;
-    }
-
-    .tab[aria-selected="true"] {
-        background: rgba(255, 255, 255, .06);
-    }
-
-    .tabs.sticky {
+    /* ===== Barre d’onglets (look “sidebar chips”, sticky, mobile-friendly) ===== */
+    .tabs-bar {
         position: sticky;
         top: 56px;
-        z-index: 4;
-        padding: 6px 2px 10px;
+        /* ajuste selon la hauteur de ton header */
+        z-index: 7;
+        padding: 8px 0 10px;
         background: var(--bg, transparent);
-        border-bottom: 1px solid var(--line);
+        border-bottom: 1px solid var(--line, rgba(125, 125, 125, .18));
         margin-bottom: 12px;
     }
 
-    .tab[aria-selected="true"] {
-        background: rgba(127, 127, 255, .08);
-        box-shadow: inset 0 0 0 2px rgba(127, 127, 255, .12);
+    /* Conteneur scrollable horizontal sans scrollbar visible */
+    .tabs.pills {
+        display: flex;
+        gap: 10px;
+        overflow-x: auto;
+        overflow-y: hidden;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+        padding: 2px 4px;
+        scroll-snap-type: x proximity;
+        /* fondu masqué aux extrémités */
+        mask-image: linear-gradient(90deg, transparent 0, #000 16px, #000 calc(100% - 16px), transparent 100%);
     }
 
+    .tabs.pills::-webkit-scrollbar {
+        display: none;
+    }
+
+    /* Pastilles harmonisées avec la sidebar */
+    .tab {
+        scroll-snap-align: start;
+        padding: 8px 12px;
+        border-radius: 999px;
+        border: 1px solid var(--line, rgba(125, 125, 125, .25));
+        background: color-mix(in oklab, var(--bg, #000) 96%, transparent);
+        color: inherit;
+        cursor: pointer;
+        user-select: none;
+        transition: background .15s ease, box-shadow .15s ease, border-color .15s ease;
+        -webkit-tap-highlight-color: transparent;
+        font-weight: 500;
+    }
+
+    .tab:hover {
+        background: color-mix(in oklab, var(--bg, #000) 92%, transparent);
+        border-color: rgba(125, 125, 125, .35);
+    }
+
+    .tab[aria-selected="true"] {
+        background: color-mix(in oklab, var(--bg, #000) 88%, transparent);
+        box-shadow: 0 0 0 2px rgba(127, 127, 255, .16) inset;
+        border-color: rgba(127, 127, 255, .35);
+    }
+
+    .tab:focus-visible {
+        outline: 2px solid color-mix(in oklab, #6ea8fe 60%, #000);
+        outline-offset: 2px;
+        border-color: transparent;
+    }
+
+    /* Mobile : gros tap targets + resserrer verticalement */
+    @media (max-width: 720px) {
+        .tabs-bar {
+            top: 52px;
+            padding: 6px 0 8px;
+        }
+
+        .tab {
+            padding: 10px 14px;
+        }
+    }
+
+    @media (max-width: 380px) {
+        .tab {
+            padding: 9px 12px;
+            font-size: .95rem;
+        }
+    }
+
+    /* ===== Bouton Enregistrer sticky ===== */
     .sticky-save {
         position: sticky;
         bottom: 8px;
@@ -118,20 +163,30 @@
         const tabs = document.querySelectorAll('.tabs .tab');
         const panels = document.querySelectorAll('[data-panel]');
         const saveRow = document.querySelector('.save-row');
+        const bar = document.querySelector('.tabs.pills');
         const FORM_TABS = ["appearance", "stock", "toasts", "admindb", "advanced"];
         const KEY = 'settingsActiveTab';
 
         function show(tab) {
             tabs.forEach(t => t.setAttribute('aria-selected', t.dataset.tab === tab ? 'true' : 'false'));
             panels.forEach(p => p.hidden = (p.dataset.panel !== tab));
-
             if (saveRow) saveRow.style.display = FORM_TABS.includes(tab) ? "flex" : "none";
 
+            // Deep link
             const u = new URL(location.href);
             u.searchParams.set('tab', tab);
-            history.replaceState(null, '', '#' + tab);   // hash
-            history.replaceState(null, '', u);           // query aussi
+            history.replaceState(null, '', u);
             localStorage.setItem(KEY, tab);
+
+            // Auto-scroll de la pastille active dans la barre (mobile)
+            const active = Array.from(tabs).find(t => t.dataset.tab === tab);
+            if (active && bar) {
+                const br = bar.getBoundingClientRect();
+                const ar = active.getBoundingClientRect();
+                if (ar.left < br.left || ar.right > br.right) {
+                    bar.scrollTo({ left: active.offsetLeft - 16, behavior: 'smooth' });
+                }
+            }
         }
 
         // clic
@@ -142,7 +197,8 @@
         }, { passive: false }));
 
         // a11y clavier (flèches)
-        document.querySelector('.tabs').addEventListener('keydown', (e) => {
+        const tablist = document.querySelector('.tabs[role="tablist"]');
+        tablist?.addEventListener('keydown', (e) => {
             if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
             e.preventDefault();
             const list = Array.from(tabs);
@@ -153,8 +209,7 @@
             if (e.key === 'Home') ni = 0;
             if (e.key === 'End') ni = list.length - 1;
             const btn = list[ni];
-            btn?.click();
-            btn?.focus();
+            btn?.click(); btn?.focus();
         });
 
         // init : hash > query > localStorage > défaut
