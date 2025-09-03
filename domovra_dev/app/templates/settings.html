@@ -33,7 +33,7 @@
         </div>
     </div>
 
-    <!-- (Optionnel) Décalage si besoin - inutilisé ici -->
+    <!-- Décalage inutilisé ici -->
     <div class="tabs-offset" aria-hidden="true"></div>
 
     {# ======= FORM RÉGLAGES UNIQUEMENT ======= #}
@@ -77,98 +77,124 @@
 </div>
 
 <style>
-    /* Sécurité */
     [hidden] {
         display: none !important;
     }
 
-    /* ---- Barre sous le header, en flux normal (PAS fixed/sticky) ---- */
+    /* ---- Barre sous le header ---- */
     .wrap[data-page="settings"] .tabs-fixed {
-        position: static;      /* comportement normal */
-        top: auto;
-        left: auto;
+        position: static;
         width: 100%;
-        z-index: auto;
         background: var(--bg-body);
         border-bottom: 1px solid var(--line);
         box-shadow: none;
-        /* Espace sous le header si celui-ci est fixed globalement */
-        /* Ajuste la marge si besoin selon ta hauteur réelle de header */
         margin-top: var(--header-compensate, 0px);
     }
 
-    /* Si ton header global est fixed et a ~56px de haut,
-       décommente la ligne ci-dessous pour éviter tout chevauchement :
-       :root { --header-compensate: 64px; } */
-
-    /* Décalage inutilisé ici, mais on neutralise au cas où */
     .wrap[data-page="settings"] .tabs-offset {
         display: none;
         height: 0;
     }
 
-    /* Desktop : onglets en 1 ligne centrée (scroll horizontal si besoin) */
+    /* Desktop : onglets en ligne */
     .tabs.desktop {
         display: flex;
-        flex-wrap: nowrap;       /* 1 ligne */
-        justify-content: center; /* centré si ça tient */
+        flex-wrap: nowrap;
+        justify-content: center;
         gap: 8px;
         padding: 8px 8px 10px;
         white-space: nowrap;
         overflow-x: auto;
-        overflow-y: hidden;
-        -webkit-overflow-scrolling: touch;
         scrollbar-width: none;
     }
-    .tabs.desktop::-webkit-scrollbar { display: none; }
 
-    /* Boutons onglets */
+    .tabs.desktop::-webkit-scrollbar {
+        display: none;
+    }
+
+    /* === Palette thème-aware pour onglets === */
+    :root {
+        --tab-bg: var(--card-bg, #ffffff);
+        --tab-border: var(--line, #e5e7eb);
+        --tab-text: var(--fg, #111827);
+        --tab-hover: color-mix(in oklab, var(--tab-bg) 94%, black 6%);
+        --tab-selected: var(--accent, #4f46e5);
+        --tab-outline: var(--tab-selected);
+    }
+
+    :root[data-theme="dark"],
+    .dark {
+        --tab-bg: var(--card-bg, #151922);
+        --tab-border: var(--line, #242932);
+        --tab-text: var(--fg, #e5e7eb);
+        --tab-hover: color-mix(in oklab, var(--tab-bg) 100%, white 6%);
+    }
+
+    @media (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"]):not(.light) {
+            --tab-bg: var(--card-bg, #151922);
+            --tab-border: var(--line, #242932);
+            --tab-text: var(--fg, #e5e7eb);
+            --tab-hover: color-mix(in oklab, var(--tab-bg) 100%, white 6%);
+        }
+    }
+
     .tabs.desktop .tab {
         display: flex;
         align-items: center;
         gap: 8px;
         padding: 10px 12px;
-        border: 1px solid #242932;
-        background: #151922;
+        border: 1px solid var(--tab-border);
+        background: var(--tab-bg);
+        color: var(--tab-text);
         border-radius: 10px;
         cursor: pointer;
-        color: inherit;
-        -webkit-tap-highlight-color: transparent;
         user-select: none;
         white-space: nowrap;
-        transition: filter .12s ease, border-color .12s ease, box-shadow .12s ease;
+        transition: background-color .12s, border-color .12s, box-shadow .12s;
         font-weight: 500;
     }
-    .tabs.desktop .tab:hover { filter: brightness(1.05); }
-    .tabs.desktop .tab[aria-selected="true"] {
-        border-color: #4f46e5;
-        box-shadow: 0 0 0 1px #4f46e5 inset;
+
+    .tabs.desktop .tab:hover {
+        background: var(--tab-hover);
     }
+
+    .tabs.desktop .tab[aria-selected="true"] {
+        border-color: var(--tab-selected);
+        box-shadow: 0 0 0 1px var(--tab-selected) inset;
+    }
+
     .tabs.desktop .tab:focus-visible {
-        outline: 2px solid #4f46e5;
+        outline: 2px solid var(--tab-outline);
         outline-offset: 2px;
     }
 
-    /* Mobile : select compact */
+    /* Mobile : select */
     .tabs-select.mobile {
         display: none;
         padding: 8px;
     }
+
     .tabs-select.mobile select {
         width: 100%;
         padding: 10px 12px;
-        border: 1px solid #242932;
+        border: 1px solid var(--tab-border);
         border-radius: 10px;
-        background: #151922;
-        color: inherit;
+        background: var(--tab-bg);
+        color: var(--tab-text);
     }
 
     @media (max-width: 719.98px) {
-        .tabs.desktop { display: none; }
-        .tabs-select.mobile { display: block; }
+        .tabs.desktop {
+            display: none;
+        }
+
+        .tabs-select.mobile {
+            display: block;
+        }
     }
 
-    /* Bouton Enregistrer sticky en bas (peut rester sticky) */
+    /* Bouton Enregistrer sticky */
     .sticky-save {
         position: sticky;
         bottom: 8px;
@@ -182,56 +208,56 @@
 
 {% block scripts %}
 <script>
-(function () {
-  const tabs = document.querySelectorAll('.tabs.desktop .tab');
-  const panels = document.querySelectorAll('[data-panel]');
-  const saveRow = document.querySelector('.save-row');
-  const sel = document.getElementById('tabSelect');
-  const FORM_TABS = ["appearance", "stock", "toasts", "admindb", "advanced"];
-  const KEY = 'settingsActiveTab';
+    (function () {
+        const tabs = document.querySelectorAll('.tabs.desktop .tab');
+        const panels = document.querySelectorAll('[data-panel]');
+        const saveRow = document.querySelector('.save-row');
+        const sel = document.getElementById('tabSelect');
+        const FORM_TABS = ["appearance", "stock", "toasts", "admindb", "advanced"];
+        const KEY = 'settingsActiveTab';
 
-  function show(tab) {
-    tabs.forEach(t => t.setAttribute('aria-selected', t.dataset.tab === tab ? 'true' : 'false'));
-    panels.forEach(p => p.hidden = (p.dataset.panel !== tab));
-    if (saveRow) saveRow.style.display = FORM_TABS.includes(tab) ? "flex" : "none";
+        function show(tab) {
+            tabs.forEach(t => t.setAttribute('aria-selected', t.dataset.tab === tab ? 'true' : 'false'));
+            panels.forEach(p => p.hidden = (p.dataset.panel !== tab));
+            if (saveRow) saveRow.style.display = FORM_TABS.includes(tab) ? "flex" : "none";
 
-    const u = new URL(location.href);
-    u.searchParams.set('tab', tab);
-    history.replaceState(null, '', u);
-    localStorage.setItem(KEY, tab);
+            const u = new URL(location.href);
+            u.searchParams.set('tab', tab);
+            history.replaceState(null, '', u);
+            localStorage.setItem(KEY, tab);
 
-    if (sel && sel.value !== tab) sel.value = tab;
-  }
+            if (sel && sel.value !== tab) sel.value = tab;
+        }
 
-  tabs.forEach(t => t.addEventListener('click', (e) => {
-    e.preventDefault(); e.stopPropagation();
-    show(t.dataset.tab);
-    t.focus();
-  }, { passive: false }));
+        tabs.forEach(t => t.addEventListener('click', (e) => {
+            e.preventDefault(); e.stopPropagation();
+            show(t.dataset.tab);
+            t.focus();
+        }, { passive: false }));
 
-  sel?.addEventListener('change', () => show(sel.value));
+        sel?.addEventListener('change', () => show(sel.value));
 
-  const tablist = document.querySelector('.tabs.desktop[role="tablist"]');
-  tablist?.addEventListener('keydown', (e) => {
-    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
-    e.preventDefault();
-    const list = Array.from(tabs);
-    const i = list.findIndex(b => b.getAttribute('aria-selected') === 'true');
-    let ni = i;
-    if (e.key === 'ArrowRight') ni = (i + 1) % list.length;
-    if (e.key === 'ArrowLeft') ni = (i - 1 + list.length) % list.length;
-    if (e.key === 'Home') ni = 0;
-    if (e.key === 'End') ni = list.length - 1;
-    const btn = list[ni];
-    btn?.click(); btn?.focus();
-  });
+        const tablist = document.querySelector('.tabs.desktop[role="tablist"]');
+        tablist?.addEventListener('keydown', (e) => {
+            if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+            e.preventDefault();
+            const list = Array.from(tabs);
+            const i = list.findIndex(b => b.getAttribute('aria-selected') === 'true');
+            let ni = i;
+            if (e.key === 'ArrowRight') ni = (i + 1) % list.length;
+            if (e.key === 'ArrowLeft') ni = (i - 1 + list.length) % list.length;
+            if (e.key === 'Home') ni = 0;
+            if (e.key === 'End') ni = list.length - 1;
+            const btn = list[ni];
+            btn?.click(); btn?.focus();
+        });
 
-  const params = new URL(location.href).searchParams;
-  const urlTab = params.get('tab');
-  const hashTab = (location.hash || '').replace('#', '');
-  const initial = hashTab || urlTab || localStorage.getItem(KEY) || 'appearance';
-  const exists = Array.from(panels).some(p => p.dataset.panel === initial);
-  show(exists ? initial : 'appearance');
-})();
+        const params = new URL(location.href).searchParams;
+        const urlTab = params.get('tab');
+        const hashTab = (location.hash || '').replace('#', '');
+        const initial = hashTab || urlTab || localStorage.getItem(KEY) || 'appearance';
+        const exists = Array.from(panels).some(p => p.dataset.panel === initial);
+        show(exists ? initial : 'appearance');
+    })();
 </script>
 {% endblock %}
