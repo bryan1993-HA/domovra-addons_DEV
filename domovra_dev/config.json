@@ -23,7 +23,7 @@
     "8099/tcp": 8099
   },
   "ports_description": {
-    "8099/tcp": "Domovra HTTP/API"
+    "8098/tcp": "Domovra-dev HTTP/API"
   },
   "panel_icon": "mdi:package-variant-closed",
   "panel_title": "domovra_dev",
