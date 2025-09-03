@@ -4,7 +4,7 @@
 {% block content %}
 <div class="wrap" data-page="settings">
 
-    <!-- Onglets (style sidebar) -->
+    <!-- Onglets (style sidebar) — toujours en haut, PC & mobile -->
     <nav class="tabs sticky sidebar-tabs" role="tablist" aria-label="Catégories de paramètres">
         <button type="button" class="tab" data-tab="appearance" aria-selected="true">Apparence</button>
         <button type="button" class="tab" data-tab="stock">Produits & Stocks</button>
@@ -15,20 +15,6 @@
         <button type="button" class="tab" data-tab="journal">Journal</button>
         <button type="button" class="tab" data-tab="about">À propos</button>
     </nav>
-
-    <!-- Version compacte mobile -->
-    <div class="tabs-select" aria-label="Choisir un onglet">
-        <select id="tabSelect">
-            <option value="appearance">Apparence</option>
-            <option value="stock">Produits & Stocks</option>
-            <option value="toasts">Notifications</option>
-            <option value="locations">Emplacements</option>
-            <option value="admindb">Admin DB</option>
-            <option value="advanced">Avancés</option>
-            <option value="journal">Journal</option>
-            <option value="about">À propos</option>
-        </select>
-    </div>
 
     {# ======= FORM RÉGLAGES UNIQUEMENT ======= #}
     <form id="settings-form" method="post" action="{{ BASE }}settings/save">
@@ -76,7 +62,7 @@
         display: none !important;
     }
 
-    /* ===== Nav tabs — style sidebar, centrée desktop, compacte mobile ===== */
+    /* ===== Nav tabs — style sidebar, sticky, PC centré / mobile scroll ===== */
     .tabs.sticky.sidebar-tabs {
         position: sticky;
         top: 56px;
@@ -88,14 +74,36 @@
         border-bottom: 1px solid var(--line);
         display: flex;
         gap: 8px;
-        flex-wrap: wrap;
-        justify-content: center;
-        /* centré en desktop */
-        overflow: visible;
-        /* pas de scroll en desktop */
     }
 
-    /* boutons = même style que .menu a */
+    /* PC / tablettes : centré + wrap (pas de scroll) */
+    @media (min-width: 720px) {
+        .tabs.sticky.sidebar-tabs {
+            justify-content: center;
+            flex-wrap: wrap;
+            overflow: visible;
+        }
+    }
+
+    /* Mobile : une ligne, scroll horizontal fluide + fondu bords */
+    @media (max-width: 719px) {
+        .tabs.sticky.sidebar-tabs {
+            justify-content: flex-start;
+            flex-wrap: nowrap;
+            overflow-x: auto;
+            overflow-y: hidden;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none;
+            padding-inline: 2px;
+            mask-image: linear-gradient(90deg, transparent 0, #000 16px, #000 calc(100% - 16px), transparent 100%);
+        }
+
+        .tabs.sticky.sidebar-tabs::-webkit-scrollbar {
+            display: none;
+        }
+    }
+
+    /* Boutons = même style que .menu a */
     .tabs.sidebar-tabs .tab {
         display: flex;
         align-items: center;
@@ -130,35 +138,6 @@
         outline-offset: 2px;
     }
 
-    /* Select mobile — caché en desktop */
-    .tabs-select {
-        display: none;
-        margin: 6px 0 12px;
-    }
-
-    .tabs-select select {
-        width: 100%;
-        padding: 10px 12px;
-        border: 1px solid #242932;
-        border-radius: 10px;
-        background: #151922;
-        color: inherit;
-    }
-
-    /* Mobile < 720px : on cache les chips, on montre le select (sticky aussi) */
-    @media (max-width: 720px) {
-        .tabs.sticky.sidebar-tabs {
-            display: none;
-        }
-
-        .tabs-select {
-            display: block;
-            position: sticky;
-            top: 52px;
-            z-index: 7;
-        }
-    }
-
     /* ===== Bouton Enregistrer sticky ===== */
     .sticky-save {
         position: sticky;
@@ -191,9 +170,12 @@
             history.replaceState(null, '', u);
             localStorage.setItem(KEY, tab);
 
-            // sync select mobile
-            const sel = document.getElementById('tabSelect');
-            if (sel && sel.value !== tab) sel.value = tab;
+            // Mobile : assure la visibilité de l’onglet actif dans le scroll
+            const bar = document.querySelector('.tabs.sticky.sidebar-tabs');
+            const active = Array.from(tabs).find(t => t.dataset.tab === tab);
+            if (bar && active && window.matchMedia("(max-width: 719px)").matches) {
+                active.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+            }
         }
 
         // clic
@@ -202,10 +184,6 @@
             show(t.dataset.tab);
             t.focus();
         }, { passive: false }));
-
-        // select mobile
-        const sel = document.getElementById('tabSelect');
-        sel?.addEventListener('change', () => show(sel.value));
 
         // a11y clavier (flèches)
         const tablist = document.querySelector('.tabs[role="tablist"]');
