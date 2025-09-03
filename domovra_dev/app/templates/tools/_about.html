@@ -118,13 +118,16 @@
 </div>
 
 <style>
-    /* ===== À propos v2 (stable + responsive) ===== */
+    /* ===== À propos v2 (responsive + patch anti-chevauchement) ===== */
 
     /* Grille principale */
     .about-grid.v2 {
         display: grid;
-        gap: 16px;
         grid-template-columns: repeat(12, 1fr);
+        gap: 16px;
+        grid-auto-flow: row;
+        grid-auto-rows: auto;
+        align-items: start;
     }
 
     /* Cartes */
@@ -133,8 +136,11 @@
         border-radius: 14px;
         padding: 14px 16px;
         background: transparent;
+        display: block;
+        position: relative;
+        min-width: 0;
+        overflow: visible;
         grid-column: span 6;
-        /* 2 colonnes logiques par défaut */
     }
 
     /* Placement desktop large (≥1100px) */
@@ -142,38 +148,33 @@
         grid-column: span 6;
     }
 
-    /* Add-on */
     .abox.v2.sys {
         grid-column: span 3;
     }
 
-    /* Système */
     .abox.v2.data {
         grid-column: span 3;
     }
 
-    /* Données */
     .abox.v2.ui {
         grid-column: span 6;
     }
 
-    /* UI */
-
-    /* Palier ≤1100px : tout en 2 colonnes */
+    /* Palier ≤1100px : 2 colonnes */
     @media (max-width:1100px) {
         .about-grid.v2 {
-            grid-template-columns: repeat(6, 1fr);
+            grid-template-columns: repeat(2, minmax(0, 1fr));
         }
 
         .abox.v2 {
-            grid-column: span 6;
+            grid-column: auto;
         }
     }
 
-    /* Palier ≤720px : pile 1 colonne, fini les chevauchements */
+    /* Palier ≤720px : pile en 1 colonne */
     @media (max-width:720px) {
         .about-grid.v2 {
-            grid-template-columns: 1fr;
+            grid-template-columns: minmax(0, 1fr);
             gap: 12px;
         }
 
@@ -230,12 +231,13 @@
         border-color: #7c6cff;
     }
 
-    /* Grille terme/valeur (zéro chevauchement) */
+    /* Grille terme/valeur */
     .kv2 {
         display: grid;
         grid-template-columns: 42% 58%;
         gap: 8px 12px;
         align-items: start;
+        min-width: 0;
     }
 
     .kv2 .full {
