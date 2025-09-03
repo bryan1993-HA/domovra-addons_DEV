@@ -4,7 +4,7 @@
 {% block content %}
 <div class="wrap" data-page="settings">
 
-    <!-- Barre FIXE sous le header : onglets (desktop) + select (mobile) -->
+    <!-- Barre sous le header : onglets (desktop) + select (mobile) -->
     <div class="tabs-fixed" role="navigation" aria-label="Catégories de paramètres">
         <!-- PC / Tablette : onglets en 1 ligne -->
         <nav class="tabs desktop" role="tablist">
@@ -33,7 +33,7 @@
         </div>
     </div>
 
-    <!-- Décalage de contenu = hauteur de la barre fixe -->
+    <!-- (Optionnel) Décalage si besoin - inutilisé ici -->
     <div class="tabs-offset" aria-hidden="true"></div>
 
     {# ======= FORM RÉGLAGES UNIQUEMENT ======= #}
@@ -82,45 +82,36 @@
         display: none !important;
     }
 
-    /* Variables contrôlées par JS pour caler la barre fixe */
-    :root {
-        --header-h: 56px;
-        /* hauteur du header */
-        --tabs-h: 56px;
-        /* hauteur de la barre */
-        --tabs-left: 0px;
-        /* X de la colonne contenu */
-        --tabs-width: 100vw;
-        /* largeur de la colonne contenu */
-    }
-
-    /* ===== Barre FIXE sous le header, alignée sur la zone contenu ===== */
-    .tabs-fixed {
-        position: fixed;
-        top: calc(var(--header-h) + 1px);
-        /* clairement SOUS le header */
-        left: var(--tabs-left);
-        width: var(--tabs-width);
-        z-index: 500;
-        /* < header (qui est à 1000), > contenu */
+    /* ---- Barre sous le header, en flux normal (PAS fixed/sticky) ---- */
+    .wrap[data-page="settings"] .tabs-fixed {
+        position: static;      /* comportement normal */
+        top: auto;
+        left: auto;
+        width: 100%;
+        z-index: auto;
         background: var(--bg-body);
         border-bottom: 1px solid var(--line);
-        box-shadow: 0 1px 0 rgba(0, 0, 0, .06);
+        box-shadow: none;
+        /* Espace sous le header si celui-ci est fixed globalement */
+        /* Ajuste la marge si besoin selon ta hauteur réelle de header */
+        margin-top: var(--header-compensate, 0px);
     }
 
-    .tabs-offset {
-        height: var(--tabs-h);
-    }
+    /* Si ton header global est fixed et a ~56px de haut,
+       décommente la ligne ci-dessous pour éviter tout chevauchement :
+       :root { --header-compensate: 64px; } */
 
-    /* espace pour ne pas masquer le contenu */
+    /* Décalage inutilisé ici, mais on neutralise au cas où */
+    .wrap[data-page="settings"] .tabs-offset {
+        display: none;
+        height: 0;
+    }
 
     /* Desktop : onglets en 1 ligne centrée (scroll horizontal si besoin) */
     .tabs.desktop {
         display: flex;
-        flex-wrap: nowrap;
-        /* 1 ligne */
-        justify-content: center;
-        /* centré si ça tient */
+        flex-wrap: nowrap;       /* 1 ligne */
+        justify-content: center; /* centré si ça tient */
         gap: 8px;
         padding: 8px 8px 10px;
         white-space: nowrap;
@@ -129,12 +120,9 @@
         -webkit-overflow-scrolling: touch;
         scrollbar-width: none;
     }
+    .tabs.desktop::-webkit-scrollbar { display: none; }
 
-    .tabs.desktop::-webkit-scrollbar {
-        display: none;
-    }
-
-    /* Boutons = style sidebar */
+    /* Boutons onglets */
     .tabs.desktop .tab {
         display: flex;
         align-items: center;
@@ -151,27 +139,21 @@
         transition: filter .12s ease, border-color .12s ease, box-shadow .12s ease;
         font-weight: 500;
     }
-
-    .tabs.desktop .tab:hover {
-        filter: brightness(1.05);
-    }
-
+    .tabs.desktop .tab:hover { filter: brightness(1.05); }
     .tabs.desktop .tab[aria-selected="true"] {
         border-color: #4f46e5;
         box-shadow: 0 0 0 1px #4f46e5 inset;
     }
-
     .tabs.desktop .tab:focus-visible {
         outline: 2px solid #4f46e5;
         outline-offset: 2px;
     }
 
-    /* Mobile : select compact (barre fixe aussi) */
+    /* Mobile : select compact */
     .tabs-select.mobile {
         display: none;
         padding: 8px;
     }
-
     .tabs-select.mobile select {
         width: 100%;
         padding: 10px 12px;
@@ -182,13 +164,8 @@
     }
 
     @media (max-width: 719.98px) {
-        .tabs.desktop {
-            display: none;
-        }
-
-        .tabs-select.mobile {
-            display: block;
-        }
+        .tabs.desktop { display: none; }
+        .tabs-select.mobile { display: block; }
     }
 
     /* Bouton Enregistrer sticky en bas (peut rester sticky) */
@@ -205,83 +182,56 @@
 
 {% block scripts %}
 <script>
-    (function () {
-        const tabs = document.querySelectorAll('.tabs.desktop .tab');
-        const panels = document.querySelectorAll('[data-panel]');
-        const saveRow = document.querySelector('.save-row');
-        const sel = document.getElementById('tabSelect');
-        const FORM_TABS = ["appearance", "stock", "toasts", "admindb", "advanced"];
-        const KEY = 'settingsActiveTab';
+(function () {
+  const tabs = document.querySelectorAll('.tabs.desktop .tab');
+  const panels = document.querySelectorAll('[data-panel]');
+  const saveRow = document.querySelector('.save-row');
+  const sel = document.getElementById('tabSelect');
+  const FORM_TABS = ["appearance", "stock", "toasts", "admindb", "advanced"];
+  const KEY = 'settingsActiveTab';
 
-        // Calage de la barre fixe sur la zone contenu
-        function updateFixedBar() {
-            const header = document.querySelector('header');
-            const fixed = document.querySelector('.tabs-fixed');
-            const wrap = document.querySelector('.wrap[data-page="settings"]');
+  function show(tab) {
+    tabs.forEach(t => t.setAttribute('aria-selected', t.dataset.tab === tab ? 'true' : 'false'));
+    panels.forEach(p => p.hidden = (p.dataset.panel !== tab));
+    if (saveRow) saveRow.style.display = FORM_TABS.includes(tab) ? "flex" : "none";
 
-            const headerH = header ? header.getBoundingClientRect().height : 56;
-            document.documentElement.style.setProperty('--header-h', headerH + 'px');
+    const u = new URL(location.href);
+    u.searchParams.set('tab', tab);
+    history.replaceState(null, '', u);
+    localStorage.setItem(KEY, tab);
 
-            if (wrap) {
-                const r = wrap.getBoundingClientRect();
-                // On prend les coordonnées relatives à la fenêtre
-                document.documentElement.style.setProperty('--tabs-left', r.left + 'px');
-                document.documentElement.style.setProperty('--tabs-width', r.width + 'px');
-            }
-            if (fixed) {
-                // Hauteur réelle pour l'offset
-                const h = fixed.getBoundingClientRect().height;
-                document.documentElement.style.setProperty('--tabs-h', h + 'px');
-            }
-        }
-        window.addEventListener('resize', updateFixedBar, { passive: true });
-        window.addEventListener('transitionend', updateFixedBar, { passive: true });
+    if (sel && sel.value !== tab) sel.value = tab;
+  }
 
-        function show(tab) {
-            tabs.forEach(t => t.setAttribute('aria-selected', t.dataset.tab === tab ? 'true' : 'false'));
-            panels.forEach(p => p.hidden = (p.dataset.panel !== tab));
-            if (saveRow) saveRow.style.display = FORM_TABS.includes(tab) ? "flex" : "none";
+  tabs.forEach(t => t.addEventListener('click', (e) => {
+    e.preventDefault(); e.stopPropagation();
+    show(t.dataset.tab);
+    t.focus();
+  }, { passive: false }));
 
-            const u = new URL(location.href);
-            u.searchParams.set('tab', tab);
-            history.replaceState(null, '', u);
-            localStorage.setItem(KEY, tab);
+  sel?.addEventListener('change', () => show(sel.value));
 
-            if (sel && sel.value !== tab) sel.value = tab;
-        }
+  const tablist = document.querySelector('.tabs.desktop[role="tablist"]');
+  tablist?.addEventListener('keydown', (e) => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+    e.preventDefault();
+    const list = Array.from(tabs);
+    const i = list.findIndex(b => b.getAttribute('aria-selected') === 'true');
+    let ni = i;
+    if (e.key === 'ArrowRight') ni = (i + 1) % list.length;
+    if (e.key === 'ArrowLeft') ni = (i - 1 + list.length) % list.length;
+    if (e.key === 'Home') ni = 0;
+    if (e.key === 'End') ni = list.length - 1;
+    const btn = list[ni];
+    btn?.click(); btn?.focus();
+  });
 
-        tabs.forEach(t => t.addEventListener('click', (e) => {
-            e.preventDefault(); e.stopPropagation();
-            show(t.dataset.tab);
-            t.focus();
-        }, { passive: false }));
-
-        sel?.addEventListener('change', () => show(sel.value));
-
-        const tablist = document.querySelector('.tabs.desktop[role="tablist"]');
-        tablist?.addEventListener('keydown', (e) => {
-            if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
-            e.preventDefault();
-            const list = Array.from(tabs);
-            const i = list.findIndex(b => b.getAttribute('aria-selected') === 'true');
-            let ni = i;
-            if (e.key === 'ArrowRight') ni = (i + 1) % list.length;
-            if (e.key === 'ArrowLeft') ni = (i - 1 + list.length) % list.length;
-            if (e.key === 'Home') ni = 0;
-            if (e.key === 'End') ni = list.length - 1;
-            const btn = list[ni];
-            btn?.click(); btn?.focus();
-        });
-
-        const params = new URL(location.href).searchParams;
-        const urlTab = params.get('tab');
-        const hashTab = (location.hash || '').replace('#', '');
-        const initial = hashTab || urlTab || localStorage.getItem(KEY) || 'appearance';
-        const exists = Array.from(panels).some(p => p.dataset.panel === initial);
-        show(exists ? initial : 'appearance');
-
-        // Premier calage + après paint
-        requestAnimationFrame(updateFixedBar);
-    })();
+  const params = new URL(location.href).searchParams;
+  const urlTab = params.get('tab');
+  const hashTab = (location.hash || '').replace('#', '');
+  const initial = hashTab || urlTab || localStorage.getItem(KEY) || 'appearance';
+  const exists = Array.from(panels).some(p => p.dataset.panel === initial);
+  show(exists ? initial : 'appearance');
+})();
 </script>
 {% endblock %}
