@@ -4,9 +4,9 @@
 {% block content %}
 <div class="wrap" data-page="settings">
 
-    <!-- Dock sticky SOUS le header, dans la colonne contenu -->
-    <div class="tabs-dock" role="navigation" aria-label="Catégories de paramètres">
-        <!-- PC / Tablette : onglets -->
+    <!-- Barre FIXE sous le header : onglets (desktop) + select (mobile) -->
+    <div class="tabs-fixed" role="navigation" aria-label="Catégories de paramètres">
+        <!-- PC / Tablette : onglets en 1 ligne -->
         <nav class="tabs desktop" role="tablist">
             <button type="button" class="tab" data-tab="appearance" aria-selected="true">Apparence</button>
             <button type="button" class="tab" data-tab="stock">Produits & Stocks</button>
@@ -32,6 +32,9 @@
             </select>
         </div>
     </div>
+
+    <!-- Décalage de contenu = hauteur de la barre fixe -->
+    <div class="tabs-offset" aria-hidden="true"></div>
 
     {# ======= FORM RÉGLAGES UNIQUEMENT ======= #}
     <form id="settings-form" method="post" action="{{ BASE }}settings/save">
@@ -74,37 +77,52 @@
 </div>
 
 <style>
-    /* sécurité */
+    /* Sécurité */
     [hidden] {
         display: none !important;
     }
 
-    /* ===== Dock sticky SOUS le header (dans la colonne contenu) ===== */
+    /* Variables contrôlées par JS pour caler la barre fixe */
     :root {
         --header-h: 56px;
+        /* hauteur du header */
+        --tabs-h: 56px;
+        /* hauteur de la barre */
+        --tabs-left: 0px;
+        /* X de la colonne contenu */
+        --tabs-width: 100vw;
+        /* largeur de la colonne contenu */
     }
 
-    /* si ton header change, ajuste ici */
-    .tabs-dock {
+    /* ===== Barre FIXE sous le header, alignée sur la zone contenu ===== */
+    .tabs-fixed {
         position: fixed;
-        top: var(--header-h);
-        /* 👈 s'accroche sous le header */
-        z-index: 7;
+        top: calc(var(--header-h) + 1px);
+        /* clairement SOUS le header */
+        left: var(--tabs-left);
+        width: var(--tabs-width);
+        z-index: 500;
+        /* < header (qui est à 1000), > contenu */
         background: var(--bg-body);
         border-bottom: 1px solid var(--line);
-        padding: 6px 0 10px;
-        margin-bottom: 12px;
+        box-shadow: 0 1px 0 rgba(0, 0, 0, .06);
     }
 
-    /* Desktop : une ligne centrée, scroll discret si ça dépasse */
+    .tabs-offset {
+        height: var(--tabs-h);
+    }
+
+    /* espace pour ne pas masquer le contenu */
+
+    /* Desktop : onglets en 1 ligne centrée (scroll horizontal si besoin) */
     .tabs.desktop {
         display: flex;
         flex-wrap: nowrap;
-        /* une seule ligne */
+        /* 1 ligne */
         justify-content: center;
-        /* centré */
+        /* centré si ça tient */
         gap: 8px;
-        padding: 2px 8px;
+        padding: 8px 8px 10px;
         white-space: nowrap;
         overflow-x: auto;
         overflow-y: hidden;
@@ -116,7 +134,7 @@
         display: none;
     }
 
-    /* Boutons = même style que la sidebar */
+    /* Boutons = style sidebar */
     .tabs.desktop .tab {
         display: flex;
         align-items: center;
@@ -148,10 +166,10 @@
         outline-offset: 2px;
     }
 
-    /* Mobile : select compact, sticky aussi car dans .tabs-dock */
+    /* Mobile : select compact (barre fixe aussi) */
     .tabs-select.mobile {
         display: none;
-        padding: 0 8px;
+        padding: 8px;
     }
 
     .tabs-select.mobile select {
@@ -173,7 +191,7 @@
         }
     }
 
-    /* Bouton Enregistrer sticky en bas */
+    /* Bouton Enregistrer sticky en bas (peut rester sticky) */
     .sticky-save {
         position: sticky;
         bottom: 8px;
@@ -195,6 +213,30 @@
         const FORM_TABS = ["appearance", "stock", "toasts", "admindb", "advanced"];
         const KEY = 'settingsActiveTab';
 
+        // Calage de la barre fixe sur la zone contenu
+        function updateFixedBar() {
+            const header = document.querySelector('header');
+            const fixed = document.querySelector('.tabs-fixed');
+            const wrap = document.querySelector('.wrap[data-page="settings"]');
+
+            const headerH = header ? header.getBoundingClientRect().height : 56;
+            document.documentElement.style.setProperty('--header-h', headerH + 'px');
+
+            if (wrap) {
+                const r = wrap.getBoundingClientRect();
+                // On prend les coordonnées relatives à la fenêtre
+                document.documentElement.style.setProperty('--tabs-left', r.left + 'px');
+                document.documentElement.style.setProperty('--tabs-width', r.width + 'px');
+            }
+            if (fixed) {
+                // Hauteur réelle pour l'offset
+                const h = fixed.getBoundingClientRect().height;
+                document.documentElement.style.setProperty('--tabs-h', h + 'px');
+            }
+        }
+        window.addEventListener('resize', updateFixedBar, { passive: true });
+        window.addEventListener('transitionend', updateFixedBar, { passive: true });
+
         function show(tab) {
             tabs.forEach(t => t.setAttribute('aria-selected', t.dataset.tab === tab ? 'true' : 'false'));
             panels.forEach(p => p.hidden = (p.dataset.panel !== tab));
@@ -208,17 +250,14 @@
             if (sel && sel.value !== tab) sel.value = tab;
         }
 
-        // clic onglets desktop
         tabs.forEach(t => t.addEventListener('click', (e) => {
             e.preventDefault(); e.stopPropagation();
             show(t.dataset.tab);
             t.focus();
         }, { passive: false }));
 
-        // change select mobile
         sel?.addEventListener('change', () => show(sel.value));
 
-        // a11y clavier (desktop)
         const tablist = document.querySelector('.tabs.desktop[role="tablist"]');
         tablist?.addEventListener('keydown', (e) => {
             if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
@@ -234,11 +273,15 @@
             btn?.click(); btn?.focus();
         });
 
-        // init
         const params = new URL(location.href).searchParams;
-        const initial = (location.hash || '').replace('#', '') || params.get('tab') || localStorage.getItem(KEY) || 'appearance';
+        const urlTab = params.get('tab');
+        const hashTab = (location.hash || '').replace('#', '');
+        const initial = hashTab || urlTab || localStorage.getItem(KEY) || 'appearance';
         const exists = Array.from(panels).some(p => p.dataset.panel === initial);
         show(exists ? initial : 'appearance');
+
+        // Premier calage + après paint
+        requestAnimationFrame(updateFixedBar);
     })();
 </script>
 {% endblock %}
