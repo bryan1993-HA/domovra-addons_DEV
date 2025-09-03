@@ -54,10 +54,6 @@
                 <dt>SQLite</dt>
                 <dd>{{ ABOUT.sys.sqlite_lib|default('n/a') }}</dd>
             </div>
-            <div>
-                <dt>Heure serveur</dt>
-                <dd>{{ ABOUT.sys.server_time|default('n/a') }}</dd>
-            </div>
         </dl>
     </section>
 
@@ -78,22 +74,6 @@
                 <dt>Journal</dt>
                 <dd><code>{{ ABOUT.sys.log_path|default('/data/domovra.log') }}</code> — {{
                     ABOUT.sys.log_size|default('n/a') }}</dd>
-            </div>
-            <div>
-                <dt>Produits</dt>
-                <dd>{{ ABOUT.counts.products|default(0) }}</dd>
-            </div>
-            <div>
-                <dt>Emplacements</dt>
-                <dd>{{ ABOUT.counts.locations|default(0) }}</dd>
-            </div>
-            <div>
-                <dt>Lots</dt>
-                <dd>{{ ABOUT.counts.lots|default(0) }}</dd>
-            </div>
-            <div>
-                <dt>Entrées journal</dt>
-                <dd>{{ ABOUT.counts.journal|default(0) }}</dd>
             </div>
         </dl>
     </section>

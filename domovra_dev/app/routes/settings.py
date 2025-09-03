@@ -203,9 +203,7 @@ def build_about(db_path: str, settings_path: str) -> dict:
             "settings_size": _file_size(settings_path),
             "log_path": log_path,
             "log_size": _file_size(log_path),
-            "server_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         },
-        "counts": _counts_summary(db_path),
     }
 
 
