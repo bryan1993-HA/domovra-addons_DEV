@@ -1,199 +1,241 @@
 {% extends "base.html" %}
-{% block title %}Domovra — Liste de courses (démo){% endblock %}
-
-{% block header_right %}
-{# -- Données de démo si rien n'est fourni -- #}
-{% set demo_lists = [{'id':1,'name':'Liste par défaut'},{'id':2,'name':'Barbecue'},{'id':3,'name':'Semaine'}] %}
-{% set lists = lists|default(demo_lists) %}
-{% set current_list = current_list|default(demo_lists[0]) %}
-{% set demo_items = [
-{'id':101,'product_name':'Lait demi écrémé','product_category':'Frais','qty_wanted':2,'is_checked':0},
-{'id':102,'product_name':'Bière','product_category':'Boissons','qty_wanted':12,'is_checked':0},
-{'id':103,'product_name':'Pâtes','product_category':'Épicerie','qty_wanted':3,'is_checked':1},
-{'id':104,'product_name':'Crème fraîche','product_category':'Frais','qty_wanted':1,'is_checked':0},
-] %}
-{% set items = items|default(demo_items) %}
-<span class="chip">🧾 Liste de courses : <b>{{ items|length }}</b></span>
-{% endblock %}
+{% block title %}Domovra — Listes d’achats{% endblock %}
 
 {% block content %}
 <div class="wrap" data-page="shopping">
 
-  <div class="card">
-    <div class="title">
-      <h2>🧾 Liste de courses</h2>
-      <span class="muted">→ maquette visuelle (aucune action serveur)</span>
-    </div>
+  <!-- Header collant avec chips des listes -->
+  <header class="page-header">
+    <h1>Domovra — <span class="muted">Listes d’achats</span></h1>
 
-    <!-- Barre d'actions haut -->
-    <div class="actions" style="display:grid;gap:.75rem;grid-template-columns:1fr auto auto;align-items:end">
-      <div>
-        <label class="lbl" for="l">Liste</label>
-        <select id="l" disabled title="Démo visuelle">
-          {% for L in lists %}
-          <option value="{{ L.id }}" {% if L.id==current_list.id %}selected{% endif %}>{{ L.name }}</option>
+    <div class="chips scroll-x" aria-label="Listes">
+      {% for L in LISTS %}
+      <a class="chip {% if L.id == ACTIVE_LIST_ID %}active{% endif %}" href="{{ BASE }}/shopping?list={{ L.id }}">
+        {{ L.emoji or '🛒' }} {{ L.name }}
+        <span class="badge">{{ L.to_buy or 0 }}</span>
+      </a>
+      {% endfor %}
+      <button class="chip action" data-open="#dlg-new-list">➕ Nouvelle</button>
+    </div>
+  </header>
+
+  <!-- Barre de filtre -->
+  <div class="toolbar">
+    <div class="left">
+      <div class="seg" role="tablist" aria-label="Filtre">
+        <a class="seg-btn {% if STATUS == 'all' %}active{% endif %}"
+          href="{{ BASE }}/shopping?list={{ ACTIVE_LIST_ID }}&status=all">Tous</a>
+        <a class="seg-btn {% if STATUS == 'todo' %}active{% endif %}"
+          href="{{ BASE }}/shopping?list={{ ACTIVE_LIST_ID }}&status=todo">À acheter</a>
+        <a class="seg-btn {% if STATUS == 'done' %}active{% endif %}"
+          href="{{ BASE }}/shopping?list={{ ACTIVE_LIST_ID }}&status=done">Achetés</a>
+      </div>
+    </div>
+    <div class="right">
+      <form id="frm-rename-list" method="post" action="{{ BASE }}/shopping/list/rename" class="inline">
+        <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
+        <input type="text" name="name" placeholder="Renommer la liste…" class="input sm">
+        <button class="btn sm">Renommer</button>
+      </form>
+      <form method="post" action="{{ BASE }}/shopping/list/delete" class="inline"
+        onsubmit="return confirm('Supprimer la liste ? Les items seront supprimés.');">
+        <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
+        <button class="btn sm danger">Supprimer</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Carte Ajout rapide -->
+  <section class="abox v2 add-form">
+    <header class="abox-h"><strong>Ajouter un produit</strong></header>
+    <div class="abox-c">
+      <form method="post" action="{{ BASE }}/shopping/item/add" class="grid add-grid">
+        <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
+
+        <div>
+          <label class="label">Produit</label>
+          <input list="products" name="product_id" class="input" inputmode="numeric"
+            placeholder="ID produit (auto-complétion ci-dessous)" required>
+          <small class="hint">Commence à taper le nom ci-dessous, puis saisis l’<strong>ID</strong> retourné.</small>
+          <datalist id="products">
+            {% for P in PRODUCTS %}
+            <option value="{{ P.id }}">{{ P.name }}{% if P.brand %} — {{ P.brand }}{% endif %}{% if P.unit %} ({{ P.unit
+              }}){% endif %}{% if P.barcode %} [{{ P.barcode }}]{% endif %}</option>
+            {% endfor %}
+          </datalist>
+        </div>
+
+        <div>
+          <label class="label">Quantité</label>
+          <input type="number" name="qty" value="1" step="0.01" min="0" class="input" required>
+        </div>
+
+        <div>
+          <label class="label">Unité (optionnel)</label>
+          <input type="text" name="unit" class="input" placeholder="ex: kg, L, pièce…">
+          <small class="hint">Par défaut : unité du produit.</small>
+        </div>
+
+        <div class="span2">
+          <label class="label">Note (facultatif)</label>
+          <input type="text" name="note" class="input" placeholder="Précision (marque, format…)">
+        </div>
+
+        <div class="actions">
+          <button class="btn">Ajouter</button>
+        </div>
+      </form>
+    </div>
+  </section>
+
+  <!-- Liste des items -->
+  <section class="list-block">
+    {% if ITEMS|length == 0 %}
+    <p class="muted">Aucun item dans cette vue.</p>
+    {% else %}
+    <div class="table-wrap hide-mobile">
+      <table class="table">
+        <colgroup>
+          <col style="width:44%">
+          <col style="width:12%">
+          <col style="width:20%">
+          <col style="width:24%">
+        </colgroup>
+        <thead>
+          <tr>
+            <th>Produit</th>
+            <th>Qté</th>
+            <th>Note</th>
+            <th class="right">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for I in ITEMS %}
+          <tr class="{% if I.is_checked %}checked{% endif %}">
+            <td>
+              <div class="mono">{{ I.product_name }}</div>
+              {% if I.product_brand %}<small class="muted">{{ I.product_brand }}</small>{% endif %}
+            </td>
+            <td>{{ I.qty }} {% if I.unit %}<span class="muted">{{ I.unit }}</span>{% else %}<span class="muted">{{
+                I.product_unit or '' }}</span>{% endif %}</td>
+            <td class="mono">{{ I.note or '' }}</td>
+            <td class="right">
+              <form method="post" action="{{ BASE }}/shopping/item/toggle" class="inline">
+                <input type="hidden" name="item_id" value="{{ I.id }}">
+                <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
+                <button class="btn sm {% if I.is_checked %}secondary{% else %}ok{% endif %}">
+                  {% if I.is_checked %}Décocher{% else %}Cocher{% endif %}
+                </button>
+              </form>
+              <form method="post" action="{{ BASE }}/shopping/item/delete" class="inline"
+                onsubmit="return confirm('Supprimer cet item ?');">
+                <input type="hidden" name="item_id" value="{{ I.id }}">
+                <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
+                <button class="btn sm danger">Suppr.</button>
+              </form>
+            </td>
+          </tr>
           {% endfor %}
-        </select>
-      </div>
-      <div>
-        <label class="lbl">&nbsp;</label>
-        <button class="btn" disabled>Ouvrir</button>
-      </div>
-      <div>
-        <label class="lbl">&nbsp;</label>
-        <button class="btn" disabled>Générer (ruptures + &lt; min)</button>
-      </div>
+        </tbody>
+      </table>
     </div>
 
-    <!-- Créer une nouvelle liste -->
-    <div style="margin-top:.75rem;display:grid;gap:.5rem;grid-template-columns:1fr auto">
-      <input type="text" placeholder="Créer une nouvelle liste…" disabled>
-      <button class="btn" disabled>Créer</button>
-    </div>
-
-    <!-- Ajouter un produit -->
-    <div style="margin-top:1rem;display:grid;gap:.75rem;grid-template-columns:1fr 140px auto">
-      <select disabled>
-        <option>— Ajouter un produit… —</option>
-        <option>Lait demi écrémé — Frais</option>
-        <option>Bière — Boissons</option>
-        <option>Pâtes — Épicerie</option>
-        <option>Crème fraîche — Frais</option>
-      </select>
-      <input type="number" step="0.01" min="0" value="1" disabled />
-      <button class="btn" disabled>Ajouter</button>
-    </div>
-
-    <!-- Actions liste -->
-    <div style="margin-top:.75rem;display:flex;gap:.5rem;flex-wrap:wrap">
-      <button class="btn" disabled>📥 Export CSV</button>
-      <a class="btn" href="javascript:window.print()">🖨️ Imprimer</a>
-      <button class="btn warn" disabled>🧹 Nettoyer (cochés)</button>
-    </div>
-
-    {% if items %}
-    <!-- Desktop -->
-    <table class="table only-desktop" style="margin-top:1rem">
-      <colgroup>
-        <col style="width:42%">
-        <col style="width:18%">
-        <col style="width:18%">
-        <col style="width:22%">
-      </colgroup>
-      <thead>
-        <tr>
-          <th>Produit</th>
-          <th>Catégorie</th>
-          <th>À acheter</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for it in items %}
-        <tr>
-          <td>
-            <div style="display:flex;align-items:center;gap:.5rem">
-              <button class="btn" style="min-width:2rem" disabled>{{ '☑️' if it.is_checked else '⬜' }}</button>
-              <span style="{{ 'text-decoration:line-through;opacity:.6' if it.is_checked else '' }}">{{ it.product_name
-                }}</span>
-              {% if it.product_category in ['Frais','Boucherie'] %}
-              <span class="chip warn" title="Catégorie sensible">⚠️</span>
-              {% endif %}
-            </div>
-          </td>
-          <td class="muted">{{ it.product_category or '—' }}</td>
-          <td>
-            <div style="display:flex;gap:.5rem;align-items:center">
-              <input type="number" step="0.01" min="0" value="{{ it.qty_wanted }}" disabled />
-              <button class="btn" disabled>OK</button>
-            </div>
-          </td>
-          <td>
-            <button class="btn error" disabled>Supprimer</button>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-
-    <!-- Mobile -->
-    <div class="only-mobile" style="display:grid;gap:.75rem;margin-top:1rem">
-      {% for it in items %}
-      <div class="card" style="background:transparent">
-        <div class="title">
-          <h3 style="margin:0">{{ it.product_name }}</h3>
-          <span class="muted">{{ it.product_category or '—' }}</span>
+    <!-- Mobile cards -->
+    <div class="cards show-mobile">
+      {% for I in ITEMS %}
+      <article class="card {% if I.is_checked %}checked{% endif %}">
+        <header class="card-h">
+          <strong>{{ I.product_name }}</strong>
+          {% if I.product_brand %}<span class="muted"> — {{ I.product_brand }}</span>{% endif %}
+        </header>
+        <div class="card-c">
+          <div class="kv">
+            <div><span class="k">Qté</span><span class="v">{{ I.qty }} {{ I.unit or I.product_unit or '' }}</span></div>
+            {% if I.note %}<div><span class="k">Note</span><span class="v mono">{{ I.note }}</span></div>{% endif %}
+          </div>
         </div>
-        <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
-          <button class="btn" style="min-width:2rem" disabled>{{ '☑️' if it.is_checked else '⬜' }}</button>
-          <input type="number" step="0.01" min="0" value="{{ it.qty_wanted }}" disabled />
-          <button class="btn" disabled>OK</button>
-          <button class="btn error" disabled>Supprimer</button>
-        </div>
-      </div>
+        <footer class="card-f right">
+          <form method="post" action="{{ BASE }}/shopping/item/toggle" class="inline">
+            <input type="hidden" name="item_id" value="{{ I.id }}">
+            <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
+            <button class="btn xs {% if I.is_checked %}secondary{% else %}ok{% endif %}">
+              {% if I.is_checked %}Décocher{% else %}Cocher{% endif %}
+            </button>
+          </form>
+          <form method="post" action="{{ BASE }}/shopping/item/delete" class="inline"
+            onsubmit="return confirm('Supprimer cet item ?');">
+            <input type="hidden" name="item_id" value="{{ I.id }}">
+            <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
+            <button class="btn xs danger">Suppr.</button>
+          </form>
+        </footer>
+      </article>
       {% endfor %}
     </div>
-
-    {% else %}
-    <p class="muted" style="margin-top:1rem">Aucun article (démo).</p>
     {% endif %}
-  </div>
+  </section>
+
+  <!-- Dialog nouvelle liste -->
+  <dialog id="dlg-new-list" class="modal">
+    <form method="post" action="{{ BASE }}/shopping/list/create" class="modal-body">
+      <header><strong>Nouvelle liste</strong></header>
+      <div class="modal-content grid">
+        <div>
+          <label class="label">Nom</label>
+          <input type="text" name="name" class="input" placeholder="Courses Semaine" required>
+        </div>
+        <div>
+          <label class="label">Emoji (optionnel)</label>
+          <input type="text" name="emoji" class="input" placeholder="🛒">
+        </div>
+      </div>
+      <footer class="modal-actions right">
+        <button type="button" class="btn secondary" data-close="#dlg-new-list">Annuler</button>
+        <button class="btn">Créer</button>
+      </footer>
+    </form>
+  </dialog>
 
 </div>
 {% endblock %}
 
-{% block head %}
-<style>
-  /* Démo impression : table propre, sans boutons */
-  @media print {
+{% block scripts %}
+<script>
+  // Ouvrir/fermer modales (léger)
+  document.querySelectorAll("[data-open]").forEach(btn => {
+    btn.addEventListener("click", e => {
+      const dlg = document.querySelector(btn.getAttribute("data-open"));
+      dlg && dlg.showModal();
+    });
+  });
+  document.querySelectorAll("[data-close]").forEach(btn => {
+    btn.addEventListener("click", e => {
+      const dlg = document.querySelector(btn.getAttribute("data-close"));
+      dlg && dlg.close();
+    });
+  });
 
-    .actions,
-    form,
-    .btn,
-    .only-mobile,
-    aside,
-    header,
-    .header-right {
-      display: none !important;
+  // Toasts basés sur ?toast=
+  (function () {
+    const u = new URL(window.location);
+    const t = u.searchParams.get("toast");
+    if (!t) return;
+    const map = {
+      added_list: ["Liste créée.", "ok"],
+      renamed_list: ["Liste renommée.", "ok"],
+      deleted_list: ["Liste supprimée.", "warn"],
+      added_item: ["Produit ajouté à la liste.", "ok"],
+      toggled: ["Statut mis à jour.", "ok"],
+      deleted_item: ["Item supprimé.", "warn"],
+      error: ["Une erreur est survenue.", "error"]
+    };
+    const payload = map[t] || null;
+    if (payload && window.showToast) {
+      window.showToast(payload[0], payload[1]);
     }
-
-    .only-desktop {
-      display: table !important;
-    }
-
-    .page {
-      padding: 0 !important;
-    }
-
-    .card {
-      box-shadow: none !important;
-    }
-
-    .table th,
-    .table td {
-      border-color: #999 !important;
-    }
-  }
-
-  /* Mutuellement exclusif desktop/mobile (au cas où ta CSS globale ne le force pas) */
-  @media (max-width: 700px) {
-    .only-desktop {
-      display: none !important;
-    }
-
-    .only-mobile {
-      display: grid !important;
-    }
-  }
-
-  @media (min-width: 701px) {
-    .only-desktop {
-      display: table !important;
-    }
-
-    .only-mobile {
-      display: none !important;
-    }
-  }
-</style>
+    // Nettoie l’URL
+    u.searchParams.delete("toast");
+    window.history.replaceState({}, "", u);
+  })();
+</script>
 {% endblock %}
