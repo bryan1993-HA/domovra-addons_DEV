@@ -2839,7 +2839,6 @@ html[data-theme="light"] .kofi-outline {
 /* ========================================================================== */
 /* ========== 18) Page shopping (/shopping) =================================== */
 /* ========================================================================== */
-
 /* ===== Domovra — Shopping (scopé) ===== */
 .wrap[data-page="shopping"] .page-header h1 {
     display: flex;
@@ -3010,4 +3009,30 @@ html[data-theme="light"] .kofi-outline {
     .wrap[data-page="shopping"] table.table th {
         padding: .5rem .6rem;
     }
+}
+
+/* --- Correctifs affichage --- */
+
+/* cacher correctement les blocs mobiles en desktop et inversement */
+@media (min-width: 701px) {
+    .show-mobile {
+        display: none !important;
+    }
+}
+
+@media (max-width: 700px) {
+    .hide-mobile {
+        display: none !important;
+    }
+}
+
+/* respecter l’attribut hidden */
+[hidden] {
+    display: none !important;
+}
+
+/* style léger pour la ligne "Acheter" ouverte */
+tr.buy-row td {
+    background: var(--bg1, rgba(255, 255, 255, 0.03));
+    border-top: 1px solid var(--border, #2e2e2e);
 }
