@@ -10,11 +10,10 @@
 
     <div class="chips scroll-x" aria-label="Listes">
       {% for L in LISTS %}
-        <a class="chip {% if L.id == ACTIVE_LIST_ID %}active{% endif %}"
-           href="{{ BASE }}/shopping?list={{ L.id }}">
-          {{ L.emoji or '🛒' }} {{ L.name }}
-          <span class="badge">{{ L.to_buy or 0 }}</span>
-        </a>
+      <a class="chip {% if L.id == ACTIVE_LIST_ID %}active{% endif %}" href="{{ BASE }}/shopping?list={{ L.id }}">
+        {{ L.emoji or '🛒' }} {{ L.name }}
+        <span class="badge">{{ L.to_buy or 0 }}</span>
+      </a>
       {% endfor %}
       <button class="chip action" data-open="#dlg-new-list">➕ Nouvelle</button>
     </div>
@@ -24,9 +23,12 @@
   <div class="toolbar">
     <div class="left">
       <div class="seg" role="tablist" aria-label="Filtre">
-        <a class="seg-btn {% if STATUS == 'all' %}active{% endif %}" href="{{ BASE }}/shopping?list={{ ACTIVE_LIST_ID }}&status=all">Tous</a>
-        <a class="seg-btn {% if STATUS == 'todo' %}active{% endif %}" href="{{ BASE }}/shopping?list={{ ACTIVE_LIST_ID }}&status=todo">À acheter</a>
-        <a class="seg-btn {% if STATUS == 'done' %}active{% endif %}" href="{{ BASE }}/shopping?list={{ ACTIVE_LIST_ID }}&status=done">Achetés</a>
+        <a class="seg-btn {% if STATUS == 'all' %}active{% endif %}"
+          href="{{ BASE }}/shopping?list={{ ACTIVE_LIST_ID }}&status=all">Tous</a>
+        <a class="seg-btn {% if STATUS == 'todo' %}active{% endif %}"
+          href="{{ BASE }}/shopping?list={{ ACTIVE_LIST_ID }}&status=todo">À acheter</a>
+        <a class="seg-btn {% if STATUS == 'done' %}active{% endif %}"
+          href="{{ BASE }}/shopping?list={{ ACTIVE_LIST_ID }}&status=done">Achetés</a>
       </div>
     </div>
     <div class="right">
@@ -35,7 +37,8 @@
         <input type="text" name="name" placeholder="Renommer la liste…" class="input sm">
         <button class="btn sm">Renommer</button>
       </form>
-      <form method="post" action="{{ BASE }}/shopping/list/delete" class="inline" onsubmit="return confirm('Supprimer la liste ? Les items seront supprimés.');">
+      <form method="post" action="{{ BASE }}/shopping/list/delete" class="inline"
+        onsubmit="return confirm('Supprimer la liste ? Les items seront supprimés.');">
         <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
         <button class="btn sm danger">Supprimer</button>
       </form>
@@ -51,14 +54,21 @@
 
         <div>
           <label class="label">Produit</label>
-          <input list="products" name="product_id" class="input" inputmode="numeric" placeholder="ID produit (auto-complétion ci-dessous)" required>
-          <small class="hint">Commence à taper le nom ci-dessous, puis saisis l’<strong>ID</strong> retourné.</small>
+          <input list="products" name="product_id_display" class="input" placeholder="Rechercher un produit…" required>
+          <input type="hidden" name="product_id" id="product_id_hidden">
+          <small class="hint">
+            Choisis une suggestion. Si absent :
+            <a href="{{ BASE }}/products?toast=add_new" class="link">créer un produit</a>.
+          </small>
           <datalist id="products">
             {% for P in PRODUCTS %}
-              <option value="{{ P.id }}">{{ P.name }}{% if P.unit %} ({{ P.unit }}){% endif %}{% if P.barcode %} [{{ P.barcode }}]{% endif %}</option>
+            <option
+              value="{{ P.id }} — {{ P.name }}{% if P.unit %} ({{ P.unit }}){% endif %}{% if P.barcode %} [{{ P.barcode }}]{% endif %}">
+            </option>
             {% endfor %}
           </datalist>
         </div>
+
 
         <div>
           <label class="label">Quantité</label>
@@ -86,157 +96,170 @@
   <!-- Liste des items -->
   <section class="list-block">
     {% if ITEMS|length == 0 %}
-      <p class="muted">Aucun item dans cette vue.</p>
+    <p class="muted">Aucun item dans cette vue.</p>
     {% else %}
-      <!-- Desktop table -->
-      <div class="table-wrap hide-mobile">
-        <table class="table">
-          <colgroup>
-            <col style="width:36%"><col style="width:10%"><col style="width:22%"><col style="width:32%">
-          </colgroup>
-          <thead>
-            <tr>
-              <th>Produit</th>
-              <th>Qté</th>
-              <th>Note</th>
-              <th class="right">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for I in ITEMS %}
-            <tr class="{% if I.is_checked %}checked{% endif %}">
-              <td>
-                <div class="mono">{{ I.product_name }}</div>
-                {% if I.product_unit %}<small class="muted">Unité: {{ I.product_unit }}</small>{% endif %}
-                {% if I.store %}<div><small class="muted">Magasin: {{ I.store }}</small></div>{% endif %}
-                {% if I.shelf_unit_price is not none %}
-                  <div><small class="muted">Prix rayon: {{ '%.2f'|format(I.shelf_unit_price) }} € / {{ I.unit or I.product_unit or '' }}</small></div>
-                {% endif %}
-                {% if I.ticket_unit_price is not none %}
-                  <div><small class="muted">Ticket: {{ '%.2f'|format(I.ticket_unit_price) }} € (Δ {{ '%.2f'|format(I.price_delta or (I.ticket_unit_price - (I.shelf_unit_price or 0))) }} €)</small></div>
-                {% endif %}
-              </td>
-              <td>{{ I.qty }} {% if I.unit %}<span class="muted">{{ I.unit }}</span>{% else %}<span class="muted">{{ I.product_unit or '' }}</span>{% endif %}</td>
-              <td class="mono">{{ I.note or '' }}</td>
-              <td class="right">
-                {% if not I.is_checked %}
-                  <!-- Bouton Acheter -->
-                  <button class="btn sm ok" data-buy="#buy-{{ I.id }}">Acheter</button>
-                  <!-- Toggle simple -->
-                  <form method="post" action="{{ BASE }}/shopping/item/toggle" class="inline">
-                    <input type="hidden" name="item_id" value="{{ I.id }}">
-                    <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
-                    <button class="btn sm secondary">Cocher</button>
-                  </form>
-                {% else %}
-                  <form method="post" action="{{ BASE }}/shopping/item/toggle" class="inline">
-                    <input type="hidden" name="item_id" value="{{ I.id }}">
-                    <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
-                    <button class="btn sm secondary">Décocher</button>
-                  </form>
-                {% endif %}
-                <form method="post" action="{{ BASE }}/shopping/item/delete" class="inline" onsubmit="return confirm('Supprimer cet item ?');">
-                  <input type="hidden" name="item_id" value="{{ I.id }}">
-                  <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
-                  <button class="btn sm danger">Suppr.</button>
-                </form>
-              </td>
-            </tr>
-
-            {% if not I.is_checked %}
-            <!-- Panneau Acheter (inline, caché par défaut) -->
-            <tr id="buy-{{ I.id }}" class="buy-row" hidden>
-              <td colspan="4">
-                <form method="post" action="{{ BASE }}/shopping/item/mark_bought" class="grid buy-grid">
-                  <input type="hidden" name="item_id" value="{{ I.id }}">
-                  <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
-                  <div>
-                    <label class="label">Magasin</label>
-                    <input type="text" name="store" class="input" placeholder="Nom du magasin" value="{{ I.store or '' }}">
-                  </div>
-                  <div>
-                    <label class="label">Prix rayon (€/{{ I.unit or I.product_unit or '' }})</label>
-                    <input type="number" name="shelf_unit_price" step="0.01" min="0" class="input" value="{{ I.shelf_unit_price if I.shelf_unit_price is not none }}">
-                  </div>
-                  <div class="actions">
-                    <button class="btn ok">Valider l’achat</button>
-                    <button type="button" class="btn secondary" data-closebuy="#buy-{{ I.id }}">Annuler</button>
-                  </div>
-                </form>
-              </td>
-            </tr>
-            {% endif %}
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-
-      <!-- Mobile cards -->
-      <div class="cards show-mobile">
-        {% for I in ITEMS %}
-        <article class="card {% if I.is_checked %}checked{% endif %}">
-          <header class="card-h">
-            <strong>{{ I.product_name }}</strong>
-            {% if I.product_unit %}<span class="muted"> — {{ I.product_unit }}</span>{% endif %}
-          </header>
-          <div class="card-c">
-            <div class="kv">
-              <div><span class="k">Qté</span><span class="v">{{ I.qty }} {{ I.unit or I.product_unit or '' }}</span></div>
-              {% if I.note %}<div><span class="k">Note</span><span class="v mono">{{ I.note }}</span></div>{% endif %}
-              {% if I.store %}<div><span class="k">Magasin</span><span class="v">{{ I.store }}</span></div>{% endif %}
-              {% if I.shelf_unit_price is not none %}<div><span class="k">Prix rayon</span><span class="v">{{ '%.2f'|format(I.shelf_unit_price) }} €</span></div>{% endif %}
-              {% if I.ticket_unit_price is not none %}
-                <div><span class="k">Ticket</span>
-                  <span class="v">{{ '%.2f'|format(I.ticket_unit_price) }} € (Δ {{ '%.2f'|format(I.price_delta or (I.ticket_unit_price - (I.shelf_unit_price or 0))) }} €)</span>
-                </div>
+    <!-- Desktop table -->
+    <div class="table-wrap hide-mobile">
+      <table class="table">
+        <colgroup>
+          <col style="width:36%">
+          <col style="width:10%">
+          <col style="width:22%">
+          <col style="width:32%">
+        </colgroup>
+        <thead>
+          <tr>
+            <th>Produit</th>
+            <th>Qté</th>
+            <th>Note</th>
+            <th class="right">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for I in ITEMS %}
+          <tr class="{% if I.is_checked %}checked{% endif %}">
+            <td>
+              <div class="mono">{{ I.product_name }}</div>
+              {% if I.product_unit %}<small class="muted">Unité: {{ I.product_unit }}</small>{% endif %}
+              {% if I.store %}<div><small class="muted">Magasin: {{ I.store }}</small></div>{% endif %}
+              {% if I.shelf_unit_price is not none %}
+              <div><small class="muted">Prix rayon: {{ '%.2f'|format(I.shelf_unit_price) }} € / {{ I.unit or
+                  I.product_unit or '' }}</small></div>
               {% endif %}
-            </div>
-          </div>
-          <footer class="card-f right">
-            {% if not I.is_checked %}
-              <button class="btn xs ok" data-buy="#mbuy-{{ I.id }}">Acheter</button>
+              {% if I.ticket_unit_price is not none %}
+              <div><small class="muted">Ticket: {{ '%.2f'|format(I.ticket_unit_price) }} € (Δ {{
+                  '%.2f'|format(I.price_delta or (I.ticket_unit_price - (I.shelf_unit_price or 0))) }} €)</small></div>
+              {% endif %}
+            </td>
+            <td>{{ I.qty }} {% if I.unit %}<span class="muted">{{ I.unit }}</span>{% else %}<span class="muted">{{
+                I.product_unit or '' }}</span>{% endif %}</td>
+            <td class="mono">{{ I.note or '' }}</td>
+            <td class="right">
+              {% if not I.is_checked %}
+              <!-- Bouton Acheter -->
+              <button class="btn sm ok" data-buy="#buy-{{ I.id }}">Acheter</button>
+              <!-- Toggle simple -->
               <form method="post" action="{{ BASE }}/shopping/item/toggle" class="inline">
                 <input type="hidden" name="item_id" value="{{ I.id }}">
                 <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
-                <button class="btn xs secondary">Cocher</button>
+                <button class="btn sm secondary">Cocher</button>
               </form>
-            {% else %}
+              {% else %}
               <form method="post" action="{{ BASE }}/shopping/item/toggle" class="inline">
                 <input type="hidden" name="item_id" value="{{ I.id }}">
                 <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
-                <button class="btn xs secondary">Décocher</button>
+                <button class="btn sm secondary">Décocher</button>
               </form>
-            {% endif %}
-            <form method="post" action="{{ BASE }}/shopping/item/delete" class="inline" onsubmit="return confirm('Supprimer cet item ?');">
-              <input type="hidden" name="item_id" value="{{ I.id }}">
-              <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
-              <button class="btn xs danger">Suppr.</button>
-            </form>
-          </footer>
+              {% endif %}
+              <form method="post" action="{{ BASE }}/shopping/item/delete" class="inline"
+                onsubmit="return confirm('Supprimer cet item ?');">
+                <input type="hidden" name="item_id" value="{{ I.id }}">
+                <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
+                <button class="btn sm danger">Suppr.</button>
+              </form>
+            </td>
+          </tr>
 
           {% if not I.is_checked %}
-          <div id="mbuy-{{ I.id }}" class="mobile-buy" hidden>
-            <form method="post" action="{{ BASE }}/shopping/item/mark_bought" class="grid buy-grid">
-              <input type="hidden" name="item_id" value="{{ I.id }}">
-              <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
-              <div>
-                <label class="label">Magasin</label>
-                <input type="text" name="store" class="input" placeholder="Nom du magasin" value="{{ I.store or '' }}">
-              </div>
-              <div>
-                <label class="label">Prix rayon (€/{{ I.unit or I.product_unit or '' }})</label>
-                <input type="number" name="shelf_unit_price" step="0.01" min="0" class="input" value="{{ I.shelf_unit_price if I.shelf_unit_price is not none }}">
-              </div>
-              <div class="actions">
-                <button class="btn ok">Valider</button>
-                <button type="button" class="btn secondary" data-closebuy="#mbuy-{{ I.id }}">Annuler</button>
-              </div>
-            </form>
-          </div>
+          <!-- Panneau Acheter (inline, caché par défaut) -->
+          <tr id="buy-{{ I.id }}" class="buy-row" hidden>
+            <td colspan="4">
+              <form method="post" action="{{ BASE }}/shopping/item/mark_bought" class="grid buy-grid">
+                <input type="hidden" name="item_id" value="{{ I.id }}">
+                <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
+                <div>
+                  <label class="label">Magasin</label>
+                  <input type="text" name="store" class="input" placeholder="Nom du magasin"
+                    value="{{ I.store or '' }}">
+                </div>
+                <div>
+                  <label class="label">Prix rayon (€/{{ I.unit or I.product_unit or '' }})</label>
+                  <input type="number" name="shelf_unit_price" step="0.01" min="0" class="input"
+                    value="{{ I.shelf_unit_price if I.shelf_unit_price is not none }}">
+                </div>
+                <div class="actions">
+                  <button class="btn ok">Valider l’achat</button>
+                  <button type="button" class="btn secondary" data-closebuy="#buy-{{ I.id }}">Annuler</button>
+                </div>
+              </form>
+            </td>
+          </tr>
           {% endif %}
-        </article>
-        {% endfor %}
-      </div>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Mobile cards -->
+    <div class="cards show-mobile">
+      {% for I in ITEMS %}
+      <article class="card {% if I.is_checked %}checked{% endif %}">
+        <header class="card-h">
+          <strong>{{ I.product_name }}</strong>
+          {% if I.product_unit %}<span class="muted"> — {{ I.product_unit }}</span>{% endif %}
+        </header>
+        <div class="card-c">
+          <div class="kv">
+            <div><span class="k">Qté</span><span class="v">{{ I.qty }} {{ I.unit or I.product_unit or '' }}</span></div>
+            {% if I.note %}<div><span class="k">Note</span><span class="v mono">{{ I.note }}</span></div>{% endif %}
+            {% if I.store %}<div><span class="k">Magasin</span><span class="v">{{ I.store }}</span></div>{% endif %}
+            {% if I.shelf_unit_price is not none %}<div><span class="k">Prix rayon</span><span class="v">{{
+                '%.2f'|format(I.shelf_unit_price) }} €</span></div>{% endif %}
+            {% if I.ticket_unit_price is not none %}
+            <div><span class="k">Ticket</span>
+              <span class="v">{{ '%.2f'|format(I.ticket_unit_price) }} € (Δ {{ '%.2f'|format(I.price_delta or
+                (I.ticket_unit_price - (I.shelf_unit_price or 0))) }} €)</span>
+            </div>
+            {% endif %}
+          </div>
+        </div>
+        <footer class="card-f right">
+          {% if not I.is_checked %}
+          <button class="btn xs ok" data-buy="#mbuy-{{ I.id }}">Acheter</button>
+          <form method="post" action="{{ BASE }}/shopping/item/toggle" class="inline">
+            <input type="hidden" name="item_id" value="{{ I.id }}">
+            <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
+            <button class="btn xs secondary">Cocher</button>
+          </form>
+          {% else %}
+          <form method="post" action="{{ BASE }}/shopping/item/toggle" class="inline">
+            <input type="hidden" name="item_id" value="{{ I.id }}">
+            <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
+            <button class="btn xs secondary">Décocher</button>
+          </form>
+          {% endif %}
+          <form method="post" action="{{ BASE }}/shopping/item/delete" class="inline"
+            onsubmit="return confirm('Supprimer cet item ?');">
+            <input type="hidden" name="item_id" value="{{ I.id }}">
+            <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
+            <button class="btn xs danger">Suppr.</button>
+          </form>
+        </footer>
+
+        {% if not I.is_checked %}
+        <div id="mbuy-{{ I.id }}" class="mobile-buy" hidden>
+          <form method="post" action="{{ BASE }}/shopping/item/mark_bought" class="grid buy-grid">
+            <input type="hidden" name="item_id" value="{{ I.id }}">
+            <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
+            <div>
+              <label class="label">Magasin</label>
+              <input type="text" name="store" class="input" placeholder="Nom du magasin" value="{{ I.store or '' }}">
+            </div>
+            <div>
+              <label class="label">Prix rayon (€/{{ I.unit or I.product_unit or '' }})</label>
+              <input type="number" name="shelf_unit_price" step="0.01" min="0" class="input"
+                value="{{ I.shelf_unit_price if I.shelf_unit_price is not none }}">
+            </div>
+            <div class="actions">
+              <button class="btn ok">Valider</button>
+              <button type="button" class="btn secondary" data-closebuy="#mbuy-{{ I.id }}">Annuler</button>
+            </div>
+          </form>
+        </div>
+        {% endif %}
+      </article>
+      {% endfor %}
+    </div>
     {% endif %}
   </section>
 
@@ -251,7 +274,10 @@
       <div class="table-wrap">
         <table class="table">
           <colgroup>
-            <col style="width:40%"><col style="width:14%"><col style="width:18%"><col style="width:28%">
+            <col style="width:40%">
+            <col style="width:14%">
+            <col style="width:18%">
+            <col style="width:28%">
           </colgroup>
           <thead>
             <tr>
@@ -264,7 +290,8 @@
           <tbody>
             {% for I in PURCHASED_TODAY %}
             {% set delta = I.price_delta if I.price_delta is not none else I.computed_delta %}
-            <tr class="{% if delta is not none and delta > 0.009 %}warn{% elif delta is not none and delta < -0.009 %}ok{% endif %}">
+            <tr
+              class="{% if delta is not none and delta > 0.009 %}warn{% elif delta is not none and delta < -0.009 %}ok{% endif %}">
               <td>
                 <div class="mono">{{ I.product_name }}</div>
                 {% if I.store %}<small class="muted">Magasin: {{ I.store }}</small>{% endif %}
@@ -275,11 +302,12 @@
                 <form method="post" action="{{ BASE }}/shopping/item/ticket_price" class="inline">
                   <input type="hidden" name="item_id" value="{{ I.id }}">
                   <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
-                  <input type="number" name="ticket_unit_price" step="0.01" min="0" class="input xs" value="{{ I.ticket_unit_price if I.ticket_unit_price is not none }}">
+                  <input type="number" name="ticket_unit_price" step="0.01" min="0" class="input xs"
+                    value="{{ I.ticket_unit_price if I.ticket_unit_price is not none }}">
                   <button class="btn xs">OK</button>
                 </form>
                 {% if delta is not none %}
-                  <small class="muted">Δ {{ '%.2f'|format(delta) }} €</small>
+                <small class="muted">Δ {{ '%.2f'|format(delta) }} €</small>
                 {% endif %}
               </td>
             </tr>
@@ -318,38 +346,38 @@
 {% block scripts %}
 <script>
   // Ouvrir/fermer modales
-  document.querySelectorAll("[data-open]").forEach(btn=>{
-    btn.addEventListener("click", ()=>{
+  document.querySelectorAll("[data-open]").forEach(btn => {
+    btn.addEventListener("click", () => {
       const dlg = document.querySelector(btn.getAttribute("data-open"));
       dlg && dlg.showModal();
     });
   });
-  document.querySelectorAll("[data-close]").forEach(btn=>{
-    btn.addEventListener("click", ()=>{
+  document.querySelectorAll("[data-close]").forEach(btn => {
+    btn.addEventListener("click", () => {
       const dlg = document.querySelector(btn.getAttribute("data-close"));
       dlg && dlg.close();
     });
   });
 
   // Panneaux "Acheter" inline
-  document.querySelectorAll("[data-buy]").forEach(btn=>{
-    btn.addEventListener("click", ()=>{
+  document.querySelectorAll("[data-buy]").forEach(btn => {
+    btn.addEventListener("click", () => {
       const row = document.querySelector(btn.getAttribute("data-buy"));
-      if(row) row.hidden = !row.hidden;
+      if (row) row.hidden = !row.hidden;
     });
   });
-  document.querySelectorAll("[data-closebuy]").forEach(btn=>{
-    btn.addEventListener("click", ()=>{
+  document.querySelectorAll("[data-closebuy]").forEach(btn => {
+    btn.addEventListener("click", () => {
       const row = document.querySelector(btn.getAttribute("data-closebuy"));
-      if(row) row.hidden = true;
+      if (row) row.hidden = true;
     });
   });
 
   // Toasts basés sur ?toast=
-  (function(){
+  (function () {
     const u = new URL(window.location);
     const t = u.searchParams.get("toast");
-    if(!t) return;
+    if (!t) return;
     const map = {
       added_list: ["Liste créée.", "ok"],
       renamed_list: ["Liste renommée.", "ok"],
@@ -362,12 +390,30 @@
       error: ["Une erreur est survenue.", "error"]
     };
     const payload = map[t] || null;
-    if(payload && window.showToast){
+    if (payload && window.showToast) {
       window.showToast(payload[0], payload[1]);
     }
     // Nettoie l’URL
     u.searchParams.delete("toast");
     window.history.replaceState({}, "", u);
+  })();
+
+  (function () {
+    const form = document.querySelector('form[action$="/shopping/item/add"]');
+    if (!form) return;
+    form.addEventListener('submit', (e) => {
+      const disp = form.querySelector('input[name="product_id_display"]');
+      const hid = form.querySelector('#product_id_hidden');
+      if (!disp || !hid) return;
+      const m = String(disp.value || '').match(/^(\d+)\b/); // prend les chiffres au début
+      if (m) {
+        hid.value = m[1];
+      } else {
+        e.preventDefault();
+        if (window.showToast) window.showToast("Choisis un produit dans la liste.", "warn");
+        disp.focus();
+      }
+    });
   })();
 </script>
 {% endblock %}
