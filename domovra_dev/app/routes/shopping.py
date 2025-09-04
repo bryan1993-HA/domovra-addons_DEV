@@ -1,69 +1,92 @@
-# domovra/app/routes/shopping.py
-from fastapi import APIRouter, Request, Query
-from fastapi.responses import HTMLResponse
+# app/routes/shopping.py
+return RedirectResponse(f"{base}shopping?list_id={int(list_id)}", status_code=303)
 
-from utils.http import ingress_base, render as render_with_env
 
-# On tente la version "with_stats" si elle existe, sinon fallback.
-try:
-    from db import list_products_with_stats as _list_products
-    _HAS_STATS = True
-except Exception:
-    from db import list_products as _list_products  # type: ignore
-    _HAS_STATS = False
+@router.post("/shopping/list/delete")
+async def delete_list(request: Request, list_id: int = Form(...)):
+base = ingress_base(request)
+with _conn() as c:
+c.execute("DELETE FROM shopping_items WHERE list_id=?", (int(list_id),))
+c.execute("DELETE FROM shopping_lists WHERE id=?", (int(list_id),))
+return RedirectResponse(f"{base}shopping", status_code=303)
 
-router = APIRouter()
 
-@router.get("/shopping", response_class=HTMLResponse)
-def shopping_page(
-    request: Request,
-    show: str = Query("outofstock", description="all | outofstock"),
-    q: str = Query("", description="recherche par nom"),
-):
-    """
-    Liste de courses :
-      - show=outofstock (défaut) => produits en rupture (stock <= 0)
-      - show=all => tous les produits
-      - q=... => filtre par nom (contient)
-    """
-    base = ingress_base(request)
+# ---------- Actions sur items ----------
 
-    # Récupère les produits (dict-like)
-    products = _list_products()
 
-    items = []
-    q_norm = (q or "").strip().lower()
+@router.post("/shopping/item/add")
+async def add_item(request: Request,
+list_id: int = Form(...),
+product_name: str = Form(...),
+product_category: Optional[str] = Form(None),
+qty_wanted: float = Form(1),
+unit: Optional[str] = Form(None)):
+base = ingress_base(request)
+with _conn() as c:
+c.execute(
+"""
+INSERT INTO shopping_items(list_id, product_name, product_category, qty_wanted, unit, is_checked)
+VALUES(?,?,?,?,?,0)
+""",
+(int(list_id), _q(product_name), _q(product_category), float(qty_wanted or 1), _q(unit))
+)
+return RedirectResponse(f"{base}shopping?list_id={int(list_id)}", status_code=303)
 
-    for p in products:
-        name = (p.get("name") or p.get("product_name") or "").strip()
 
-        # Plusieurs backends possibles pour la quantité
-        qty = p.get("stock_qty")
-        if qty is None:
-            qty = p.get("stock")
-        if qty is None:
-            qty = 0
+@router.post("/shopping/item/toggle")
+async def toggle_item(request: Request, id: int = Form(...), list_id: Optional[int] = Form(None)):
+base = ingress_base(request)
+with _conn() as c:
+c.execute("UPDATE shopping_items SET is_checked = 1 - is_checked WHERE id=?", (int(id),))
+q = f"{base}shopping"
+if list_id: q += f"?list_id={int(list_id)}"
+return RedirectResponse(q, status_code=303)
 
-        # Filtres
-        if show == "outofstock" and (qty or 0) > 0:
-            continue
-        if q_norm and q_norm not in name.lower():
-            continue
 
-        items.append({
-            "id": p.get("id"),
-            "name": name or "(Sans nom)",
-            "stock_qty": qty or 0,
-        })
+@router.post("/shopping/item/qty")
+async def set_qty(request: Request, id: int = Form(...), qty_wanted: float = Form(...)):
+base = ingress_base(request)
+with _conn() as c:
+c.execute("UPDATE shopping_items SET qty_wanted=? WHERE id=?", (float(qty_wanted), int(id)))
+return RedirectResponse(f"{base}shopping", status_code=303)
 
-    # ⚠️ Très important: http.render attend l'ENV Jinja en PREMIER argument.
-    # On lui passe request.app.state.templates + on inclut "request" dans le contexte.
-    return render_with_env(
-        request.app.state.templates,   # 1) ENV Jinja
-        "shopping.html",               # 2) nom du template
-        BASE=base,
-        items=items,
-        params={"show": show, "q": q},
-        debug={"has_stats": _HAS_STATS, "raw_count": len(products), "after_filter": len(items)},
-        request=request                # 3) nécessaire pour base.html (request.path)
-    )
+
+@router.post("/shopping/item/edit")
+async def edit_item(request: Request,
+id: int = Form(...),
+product_name: str = Form(...),
+product_category: Optional[str] = Form(None),
+qty_wanted: float = Form(1),
+unit: Optional[str] = Form(None),
+note: Optional[str] = Form(None)):
+base = ingress_base(request)
+with _conn() as c:
+c.execute(
+"UPDATE shopping_items SET product_name=?, product_category=?, qty_wanted=?, unit=?, note=? WHERE id=?",
+(_q(product_name), _q(product_category), float(qty_wanted or 1), _q(unit), _q(note), int(id))
+)
+return RedirectResponse(f"{base}shopping", status_code=303)
+
+
+@router.post("/shopping/item/delete")
+async def delete_item(request: Request, id: int = Form(...)):
+base = ingress_base(request)
+with _conn() as c:
+c.execute("DELETE FROM shopping_items WHERE id=?", (int(id),))
+return RedirectResponse(f"{base}shopping", status_code=303)
+
+
+@router.post("/shopping/check_all")
+async def check_all(request: Request, list_id: int = Form(...)):
+base = ingress_base(request)
+with _conn() as c:
+c.execute("UPDATE shopping_items SET is_checked=1 WHERE list_id=?", (int(list_id),))
+return RedirectResponse(f"{base}shopping?list_id={int(list_id)}", status_code=303)
+
+
+@router.post("/shopping/uncheck_all")
+async def uncheck_all(request: Request, list_id: int = Form(...)):
+base = ingress_base(request)
+with _conn() as c:
+c.execute("UPDATE shopping_items SET is_checked=0 WHERE list_id=?", (int(list_id),))
+return RedirectResponse(f"{base}shopping?list_id={int(list_id)}", status_code=303)
