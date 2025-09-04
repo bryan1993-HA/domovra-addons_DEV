@@ -1,7 +1,7 @@
 # app/routes/shopping.py
 import os
 import sqlite3
-from datetime import datetime
+from datetime import datetime, date
 from typing import Optional, List, Dict, Any
 
 from fastapi import APIRouter, Request, Form, Query
@@ -21,6 +21,11 @@ def get_db():
     conn.row_factory = sqlite3.Row
     return conn
 
+def table_has_column(conn: sqlite3.Connection, table: str, column: str) -> bool:
+    cur = conn.cursor()
+    cur.execute(f"PRAGMA table_info({table});")
+    cols = {r[1] for r in cur.fetchall()}  # r[1] = name
+    return column in cols
 
 def init_db():
     conn = get_db()
@@ -56,18 +61,11 @@ def init_db():
         );
         """
     )
-    cur.execute(
-        "CREATE INDEX IF NOT EXISTS idx_items_list ON shopping_items(list_id, position);"
-    )
-    cur.execute(
-        "CREATE INDEX IF NOT EXISTS idx_items_checked ON shopping_items(list_id, is_checked);"
-    )
-    cur.execute(
-        "CREATE INDEX IF NOT EXISTS idx_items_product ON shopping_items(product_id);"
-    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_items_list ON shopping_items(list_id, position);")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_items_checked ON shopping_items(list_id, is_checked);")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_items_product ON shopping_items(product_id);")
     conn.commit()
     conn.close()
-
 
 init_db()
 
@@ -87,7 +85,6 @@ def ensure_default_list(conn) -> int:
     conn.commit()
     return cur.lastrowid
 
-
 def fetch_lists_with_counts(conn) -> List[Dict[str, Any]]:
     cur = conn.cursor()
     cur.execute(
@@ -103,55 +100,104 @@ def fetch_lists_with_counts(conn) -> List[Dict[str, Any]]:
     )
     return [dict(r) for r in cur.fetchall()]
 
-
 def fetch_products(conn, q: Optional[str] = None, limit: int = 200) -> List[Dict[str, Any]]:
-    cur = conn.cursor()
+    has_barcode = table_has_column(conn, "products", "barcode")
+    has_unit = table_has_column(conn, "products", "unit")
+
+    select_cols = ["id", "name"]
+    if has_unit: select_cols.append("unit")
+    if has_barcode: select_cols.append("barcode")
+
+    where_parts = ["name LIKE ?"]
+    params: List[Any] = []
     if q:
         qlike = f"%{q.strip()}%"
-        cur.execute(
-            """
-            SELECT id, name, brand, unit, barcode
-            FROM products
-            WHERE name LIKE ? OR brand LIKE ? OR barcode LIKE ?
-            ORDER BY name ASC
-            LIMIT ?;
-            """,
-            (qlike, qlike, qlike, limit),
-        )
+        params.append(qlike)
+        if has_barcode:
+            where_parts.append("barcode LIKE ?")
+            params.append(qlike)
+        where_sql = " WHERE " + " OR ".join(where_parts)
     else:
-        cur.execute(
-            """
-            SELECT id, name, brand, unit, barcode
-            FROM products
-            ORDER BY name ASC
-            LIMIT ?;
-            """,
-            (limit,),
-        )
-    return [dict(r) for r in cur.fetchall()]
+        where_sql = ""
 
+    sql = f"""
+        SELECT {", ".join(select_cols)}
+        FROM products
+        {where_sql}
+        ORDER BY name ASC
+        LIMIT ?;
+    """
+    params.append(limit)
+
+    cur = conn.cursor()
+    cur.execute(sql, params)
+    rows = [dict(r) for r in cur.fetchall()]
+
+    # Normalise pour template
+    for r in rows:
+        r.setdefault("unit", None)
+        r.setdefault("barcode", None)
+    return rows
 
 def fetch_items(conn, list_id: int, status: Optional[str] = None) -> List[Dict[str, Any]]:
-    cur = conn.cursor()
+    has_unit = table_has_column(conn, "products", "unit")
+    unit_sel = ", P.unit AS product_unit" if has_unit else ""
+
     where_status = ""
     params: List[Any] = [list_id]
     if status == "todo":
         where_status = "AND I.is_checked=0"
     elif status == "done":
         where_status = "AND I.is_checked=1"
-    cur.execute(
-        f"""
-        SELECT I.*, P.name AS product_name, P.brand AS product_brand, P.unit AS product_unit
+
+    sql = f"""
+        SELECT I.*,
+               P.name AS product_name
+               {unit_sel}
         FROM shopping_items I
         JOIN products P ON P.id = I.product_id
         WHERE I.list_id = ?
         {where_status}
         ORDER BY I.is_checked ASC, I.position ASC, I.id ASC;
-        """,
-        params,
-    )
-    return [dict(r) for r in cur.fetchall()]
+    """
+    cur = conn.cursor()
+    cur.execute(sql, params)
+    rows = [dict(r) for r in cur.fetchall()]
+    for r in rows:
+        r.setdefault("product_unit", None)
+    return rows
 
+def fetch_purchased_today(conn, list_id: int) -> List[Dict[str, Any]]:
+    """Items cochés aujourd'hui (pour le contrôle ticket)."""
+    today = date.today().isoformat()
+    has_unit = table_has_column(conn, "products", "unit")
+    unit_sel = ", P.unit AS product_unit" if has_unit else ""
+
+    sql = f"""
+        SELECT I.*,
+               P.name AS product_name
+               {unit_sel}
+        FROM shopping_items I
+        JOIN products P ON P.id = I.product_id
+        WHERE I.list_id = ?
+          AND I.is_checked = 1
+          AND I.purchased_at IS NOT NULL
+          AND substr(I.purchased_at, 1, 10) = ?
+        ORDER BY I.position ASC, I.id ASC;
+    """
+    cur = conn.cursor()
+    cur.execute(sql, (list_id, today))
+    rows = [dict(r) for r in cur.fetchall()]
+    for r in rows:
+        r.setdefault("product_unit", None)
+        # Recalcule delta en lecture si valeurs présentes mais delta NULL
+        s = r.get("shelf_unit_price")
+        t = r.get("ticket_unit_price")
+        if s is not None and t is not None:
+            r["computed_delta"] = float(t) - float(s)
+        else:
+            r["computed_delta"] = None
+    return rows
 
 def next_position(conn, list_id: int) -> int:
     cur = conn.cursor()
@@ -159,8 +205,9 @@ def next_position(conn, list_id: int) -> int:
     row = cur.fetchone()
     return (row["maxpos"] or 0) + 1
 
-
 def product_unit(conn, product_id: int) -> Optional[str]:
+    if not table_has_column(conn, "products", "unit"):
+        return None
     cur = conn.cursor()
     cur.execute("SELECT unit FROM products WHERE id=?;", (product_id,))
     row = cur.fetchone()
@@ -173,7 +220,7 @@ def page_shopping(
     request: Request,
     list_id: Optional[int] = Query(None, alias="list"),
     status: Optional[str] = Query(None),
-    q: Optional[str] = Query(None),  # recherche simple client-side; q non utilisée server-side en V1
+    q: Optional[str] = Query(None),
 ):
     conn = get_db()
     try:
@@ -183,8 +230,20 @@ def page_shopping(
 
         lists = fetch_lists_with_counts(conn)
         items = fetch_items(conn, list_id, status=status)
-        # Prépare datalist produits (jusqu'à 200)
         products = fetch_products(conn, q=None, limit=200)
+        purchased_today = fetch_purchased_today(conn, list_id)
+
+        # Totaux contrôle
+        anomalies = 0
+        total_delta = 0.0
+        for r in purchased_today:
+            d = r.get("price_delta")
+            if d is None:
+                d = r.get("computed_delta")
+            if d is not None:
+                total_delta += float(d)
+                if abs(float(d)) > 0.009:  # > 1 centime
+                    anomalies += 1
 
         return render_with_env(
             request,
@@ -196,6 +255,9 @@ def page_shopping(
                 "ITEMS": items,
                 "PRODUCTS": products,
                 "STATUS": status or "all",
+                "PURCHASED_TODAY": purchased_today,
+                "ANOMALIES": anomalies,
+                "TOTAL_DELTA": round(total_delta, 2),
             },
         )
     finally:
@@ -221,7 +283,6 @@ def create_list(request: Request, name: str = Form(...), emoji: str = Form(""), 
     finally:
         conn.close()
 
-
 @router.post("/shopping/list/rename")
 def rename_list(request: Request, list_id: int = Form(...), name: str = Form(...)):
     conn = get_db()
@@ -235,12 +296,10 @@ def rename_list(request: Request, list_id: int = Form(...), name: str = Form(...
     finally:
         conn.close()
 
-
 @router.post("/shopping/list/delete")
 def delete_list(request: Request, list_id: int = Form(...)):
     conn = get_db()
     try:
-        # Trouver une autre liste pour rediriger après suppression
         cur = conn.cursor()
         cur.execute("SELECT id FROM shopping_lists WHERE id<>? ORDER BY id LIMIT 1;", (list_id,))
         other = cur.fetchone()
@@ -250,7 +309,6 @@ def delete_list(request: Request, list_id: int = Form(...)):
         conn.commit()
         log_event("shopping", f"Suppression liste id={list_id}")
         if not target:
-            # recrée une liste par défaut si c'était la dernière
             target = ensure_default_list(conn)
         url = f"{ingress_base(request)}/shopping?list={target}&toast=deleted_list"
         return RedirectResponse(url, status_code=303)
@@ -270,10 +328,8 @@ def add_item(
 ):
     conn = get_db()
     try:
-        # Défaut unité = unité du produit si non fournie
         if not unit:
             unit = product_unit(conn, product_id)
-
         pos = next_position(conn, list_id)
         now = datetime.utcnow().isoformat()
         cur = conn.cursor()
@@ -291,9 +347,9 @@ def add_item(
     finally:
         conn.close()
 
-
 @router.post("/shopping/item/toggle")
 def toggle_item(request: Request, item_id: int = Form(...), list_id: int = Form(...)):
+    """Cocher/décocher. Si on décoche : on nettoie les infos d'achat."""
     conn = get_db()
     try:
         cur = conn.cursor()
@@ -302,15 +358,30 @@ def toggle_item(request: Request, item_id: int = Form(...), list_id: int = Form(
         if not row:
             url = f"{ingress_base(request)}/shopping?list={list_id}&toast=error"
             return RedirectResponse(url, status_code=303)
-        new_val = 0 if int(row["is_checked"] or 0) == 1 else 1
-        cur.execute("UPDATE shopping_items SET is_checked=? WHERE id=?", (new_val, item_id))
+        was_checked = int(row["is_checked"] or 0) == 1
+        if was_checked:
+            # On repasse en "à acheter" => purge des champs achat
+            cur.execute(
+                """
+                UPDATE shopping_items
+                   SET is_checked=0,
+                       purchased_at=NULL,
+                       store=NULL,
+                       shelf_unit_price=NULL,
+                       ticket_unit_price=NULL,
+                       price_delta=NULL
+                 WHERE id=?;
+                """,
+                (item_id,),
+            )
+        else:
+            cur.execute("UPDATE shopping_items SET is_checked=1, purchased_at=? WHERE id=?", (datetime.utcnow().isoformat(), item_id))
         conn.commit()
-        log_event("shopping", f"Toggle item id={item_id} → {new_val}")
+        log_event("shopping", f"Toggle item id={item_id} → {0 if was_checked else 1}")
         url = f"{ingress_base(request)}/shopping?list={list_id}&toast=toggled"
         return RedirectResponse(url, status_code=303)
     finally:
         conn.close()
-
 
 @router.post("/shopping/item/delete")
 def delete_item(request: Request, item_id: int = Form(...), list_id: int = Form(...)):
@@ -321,6 +392,68 @@ def delete_item(request: Request, item_id: int = Form(...), list_id: int = Form(
         conn.commit()
         log_event("shopping", f"Suppression item id={item_id}")
         url = f"{ingress_base(request)}/shopping?list={list_id}&toast=deleted_item"
+        return RedirectResponse(url, status_code=303)
+    finally:
+        conn.close()
+
+@router.post("/shopping/item/mark_bought")
+def mark_bought(
+    request: Request,
+    item_id: int = Form(...),
+    list_id: int = Form(...),
+    store: str = Form(""),
+    shelf_unit_price: Optional[float] = Form(None),
+):
+    """Depuis le magasin : noter prix rayon + magasin et marquer 'acheté'."""
+    conn = get_db()
+    try:
+        now = datetime.utcnow().isoformat()
+        cur = conn.cursor()
+        cur.execute(
+            """
+            UPDATE shopping_items
+               SET is_checked=1,
+                   purchased_at=?,
+                   store=?,
+                   shelf_unit_price=?
+             WHERE id=?;
+            """,
+            (now, (store or None), shelf_unit_price, item_id),
+        )
+        conn.commit()
+        log_event("shopping", f"Achat item id={item_id} store='{store}' shelf={shelf_unit_price}")
+        url = f"{ingress_base(request)}/shopping?list={list_id}&toast=marked_bought"
+        return RedirectResponse(url, status_code=303)
+    finally:
+        conn.close()
+
+@router.post("/shopping/item/ticket_price")
+def ticket_price(
+    request: Request,
+    item_id: int = Form(...),
+    list_id: int = Form(...),
+    ticket_unit_price: float = Form(...),
+):
+    """Après caisse : saisir le prix ticket, calculer l'écart et garder la trace."""
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT shelf_unit_price FROM shopping_items WHERE id=?", (item_id,))
+        row = cur.fetchone()
+        shelf = float(row["shelf_unit_price"]) if row and row["shelf_unit_price"] is not None else 0.0
+        delta = float(ticket_unit_price) - shelf
+        cur.execute(
+            """
+            UPDATE shopping_items
+               SET ticket_unit_price=?,
+                   price_delta=?
+             WHERE id=?;
+            """,
+            (ticket_unit_price, delta, item_id),
+        )
+        conn.commit()
+        log_event("shopping", f"Ticket item id={item_id} ticket={ticket_unit_price} delta={delta:+.2f}")
+        url = f"{ingress_base(request)}/shopping?list={list_id}&toast=ticket_ok"
         return RedirectResponse(url, status_code=303)
     finally:
         conn.close()
