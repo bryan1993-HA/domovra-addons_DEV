@@ -2853,6 +2853,11 @@ html[data-theme="light"] .kofi-outline {
     --danger: var(--toast-error);
 }
 
+/* Empilement des cartes (comme Accueil) */
+.wrap[data-page="shopping"] .abox.v2+.abox.v2 {
+    margin-top: 12px;
+}
+
 /* Toolbar (mêmes pilules / densité que Accueil) */
 .shopping-toolbar {
     position: sticky;
@@ -2912,11 +2917,18 @@ html[data-theme="light"] .kofi-outline {
     border-bottom: 1px solid var(--line);
 }
 
+.wrap[data-page="shopping"] .abox-h .right {
+    margin-left: auto;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
 .wrap[data-page="shopping"] .abox-c {
     padding: 12px;
 }
 
-/* Sous-carte “Ajouter un produit” allégée */
+/* Sous-carte “Ajouter un produit” allégée (si imbriquée) */
 .wrap[data-page="shopping"] .abox.v2 .abox.v2 {
     background: transparent;
     border: 1px dashed var(--line);
@@ -2944,6 +2956,14 @@ html[data-theme="light"] .kofi-outline {
 .wrap[data-page="shopping"] .btn.secondary {
     background: transparent;
     border: 1px solid var(--line);
+}
+
+/* Bouton “ok” (Acheter / Valider) cohérent avec la palette */
+.wrap[data-page="shopping"] .btn.ok {
+    background: var(--ok);
+    border: 0;
+    color: #0e1a0f;
+    font-weight: 600;
 }
 
 /* Grilles & inputs (rythme .wrap) */
@@ -2985,7 +3005,7 @@ html[data-theme="light"] .kofi-outline {
     min-height: 36px;
 }
 
-/* Ajout produit : CTA vert (mêmes couleurs que toasts) */
+/* Ajout produit : CTA vert + placeholder */
 .wrap[data-page="shopping"] form[action*="shopping/item/add"] .input::placeholder {
     color: var(--text-muted);
 }
@@ -3002,7 +3022,7 @@ html[data-theme="light"] .kofi-outline {
     max-width: 320px;
 }
 
-/* Table desktop — même style que 11/12/13/14 (border-bottom only + hover) */
+/* Table desktop — border-bottom + hover (aligné avec Accueil/Produits/Stocks) */
 .wrap[data-page="shopping"] .table-wrap {
     border: 1px solid var(--line);
     border-radius: 12px;
@@ -3137,7 +3157,7 @@ html[data-theme="light"] .wrap[data-page="shopping"] table.table tbody tr:hover 
     }
 }
 
-/* Impression (mêmes règles sobres) */
+/* Impression (règles sobres) */
 @media print {
 
     .shopping-toolbar,
