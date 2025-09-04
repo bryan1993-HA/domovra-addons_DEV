@@ -8,34 +8,33 @@
   <div class="shopping-toolbar" role="region" aria-label="Filtres liste d’achats">
     <div class="left" role="tablist" aria-label="État d’affichage">
       <a class="chip {% if STATUS!='done' %}active{% endif %}"
-         href="{{ BASE }}shopping?list={{ ACTIVE_LIST_ID }}&status=todo"
-         role="tab" aria-selected="{{ STATUS!='done' }}">À acheter</a>
+        href="{{ BASE }}shopping?list={{ ACTIVE_LIST_ID }}&status=todo" role="tab"
+        aria-selected="{{ STATUS!='done' }}">À acheter</a>
       <a class="chip {% if STATUS=='done' %}active{% endif %}"
-         href="{{ BASE }}shopping?list={{ ACTIVE_LIST_ID }}&status=done"
-         role="tab" aria-selected="{{ STATUS=='done' }}">Achetés</a>
+        href="{{ BASE }}shopping?list={{ ACTIVE_LIST_ID }}&status=done" role="tab"
+        aria-selected="{{ STATUS=='done' }}">Achetés</a>
     </div>
     <div class="right">
       <span class="chip muted" aria-live="polite">🧾 Ticket: {{ PURCHASED_TODAY|length or 0 }}</span>
-      <span class="chip {% if ANOMALIES>0 %}warn{% else %}ok{% endif %}"
-            title="Delta total entre prix rayon et ticket">
+      <span class="chip {% if ANOMALIES>0 %}warn{% else %}ok{% endif %}" title="Delta total entre prix rayon et ticket">
         Δ {{ '%.2f'|format(TOTAL_DELTA) }} €
       </span>
     </div>
   </div>
 
-  <!-- Carte 1 : Liste + actions hautes -->
-  <section class="abox v2" aria-labelledby="h-shopping">
+  <!-- Carte 1 : Liste -->
+  <section class="abox v2" aria-labelledby="h-list">
     <header class="abox-h">
-      <strong id="h-shopping">🧾 Liste de courses</strong>
-      <span class="muted">→ maquette visuelle (style) + actions réelles</span>
+      <strong id="h-list">🧾 Liste de courses</strong>
+      <span class="muted">— sélectionnez ou créez une liste</span>
       <div class="right">
         <button class="btn sm secondary" type="button" title="Ouvrir (maquette)">Ouvrir</button>
         <button class="btn sm secondary" type="button" title="Générer (maquette)">Générer (ruptures + &lt; min)</button>
       </div>
     </header>
-
     <div class="abox-c">
       <div class="grid-2">
+        <!-- Sélecteur de liste -->
         <form class="inline" method="get" action="{{ BASE }}shopping">
           <label class="label sr-only" for="shopping-list">Liste</label>
           <input type="hidden" name="status" value="{{ STATUS }}">
@@ -49,6 +48,7 @@
           <button class="btn sm">Ouvrir</button>
         </form>
 
+        <!-- Créer une liste -->
         <form class="inline right" method="post" action="{{ BASE }}shopping/list/create">
           <label class="label sr-only" for="new-list-name">Créer une nouvelle liste</label>
           <input id="new-list-name" class="input" name="name" placeholder="Créer une nouvelle liste…" required>
@@ -60,24 +60,26 @@
   </section>
 
   <!-- Carte 2 : Ajouter un produit -->
-  <section class="abox v2">
+  <section class="abox v2" aria-labelledby="h-add">
     <header class="abox-h">
-      <strong>— Ajouter un produit… —</strong>
+      <strong id="h-add">➕ Ajouter un produit</strong>
     </header>
     <div class="abox-c">
-      <form method="post" action="{{ BASE }}shopping/item/add"
-            class="grid add-grid grid-add" aria-label="Ajout rapide d’un produit">
+      <form method="post" action="{{ BASE }}shopping/item/add" class="grid add-grid grid-add"
+        aria-label="Ajout rapide d’un produit">
         <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
 
         <!-- Produit -->
         <div>
           <label class="label sr-only" for="product-id-display">Produit</label>
-          <input id="product-id-display" list="products" name="product_id_display"
-                 class="input" autocomplete="off" placeholder="— Ajouter un produit… —" required>
+          <input id="product-id-display" list="products" name="product_id_display" class="input" autocomplete="off"
+            placeholder="— Ajouter un produit… —" required>
           <input type="hidden" id="product_id_hidden" name="product_id">
           <datalist id="products">
             {% for P in PRODUCTS %}
-            <option value="{{ P.id }} — {{ P.name }}{% if P.unit %} ({{ P.unit }}){% endif %}{% if P.barcode %} [{{ P.barcode }}]{% endif %}"></option>
+            <option
+              value="{{ P.id }} — {{ P.name }}{% if P.unit %} ({{ P.unit }}){% endif %}{% if P.barcode %} [{{ P.barcode }}]{% endif %}">
+            </option>
             {% endfor %}
           </datalist>
         </div>
@@ -101,7 +103,7 @@
         </div>
 
         <div class="right">
-          <button class="btn">Ajouter</button>
+          <button class="btn ok">Ajouter</button>
         </div>
       </form>
 
@@ -112,195 +114,196 @@
     </div>
   </section>
 
-  <!-- Carte 3 : Outils -->
-  <section class="abox v2">
-    <header class="abox-h"><strong>Outils</strong></header>
-    <div class="abox-c">
-      <div class="toolbar">
+  <!-- Carte 3 : Articles (outils dans le header) -->
+  <section class="abox v2" aria-labelledby="h-items">
+    <header class="abox-h">
+      <strong id="h-items">🗒️ Articles</strong>
+      <span class="muted">— {{ ITEMS|length or 0 }} élément{{ (ITEMS|length or 0) > 1 and 's' or '' }}</span>
+      <div class="right">
         <button class="btn sm secondary" type="button" title="Export CSV (à venir)">🗂️ Export CSV</button>
         <button class="btn sm secondary" type="button" onclick="window.print()">🖨️ Imprimer</button>
         <button class="btn sm warn" type="button" title="Supprimer les cochés (à venir)">🧹 Nettoyer (cochés)</button>
       </div>
-    </div>
-  </section>
-
-  <!-- Carte 4 : Articles -->
-  <section class="abox v2">
-    <header class="abox-h">
-      <strong>Articles</strong>
     </header>
+
     <div class="abox-c">
-      <div class="list-block">
-        {% if ITEMS|length == 0 %}
-          <p class="muted">Aucun article pour cette vue.</p>
-        {% else %}
+      {% if ITEMS|length == 0 %}
+      <p class="muted">Aucun article pour cette vue.</p>
+      {% else %}
 
-        <!-- Table desktop -->
-        <div class="table-wrap hide-mobile">
-          <table class="table" aria-describedby="table-caption">
-            <caption id="table-caption" class="sr-only">Tableau des articles de la liste</caption>
-            <colgroup>
-              <col style="width:42%">
-              <col style="width:10%">
-              <col style="width:20%">
-              <col style="width:28%">
-            </colgroup>
-            <thead>
-              <tr>
-                <th scope="col">Produit</th>
-                <th scope="col">Qté</th>
-                <th scope="col">Note</th>
-                <th scope="col" class="right">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for I in ITEMS %}
-              <tr class="{% if I.is_checked %}checked{% endif %}">
-                <td>
-                  <div><strong class="mono">{{ I.product_name }}</strong></div>
-                  {% if I.product_unit %}<small class="muted">Unité: {{ I.product_unit }}</small>{% endif %}
-                  {% if I.store %}<div><small class="muted">Magasin: {{ I.store }}</small></div>{% endif %}
-                  {% if I.shelf_unit_price is not none %}
-                  <div><small class="muted">Prix rayon: {{ '%.2f'|format(I.shelf_unit_price) }} € / {{ I.unit or I.product_unit or '' }}</small></div>
-                  {% endif %}
-                  {% if I.ticket_unit_price is not none %}
-                  <div><small class="muted">Ticket: {{ '%.2f'|format(I.ticket_unit_price) }} € (Δ {{ '%.2f'|format(I.price_delta or (I.ticket_unit_price - (I.shelf_unit_price or 0))) }} €)</small></div>
-                  {% endif %}
-                </td>
-                <td>{{ I.qty }} <span class="muted">{{ I.unit or I.product_unit or '' }}</span></td>
-                <td class="mono">{{ I.note or '' }}</td>
-                <td class="right">
-                  {% if not I.is_checked %}
-                    <button class="btn sm ok" data-buy="#buy-{{ I.id }}">Acheter</button>
-                    <form method="post" action="{{ BASE }}shopping/item/toggle" class="inline">
-                      <input type="hidden" name="item_id" value="{{ I.id }}">
-                      <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
-                      <button class="btn sm secondary">Cocher</button>
-                    </form>
-                  {% else %}
-                    <form method="post" action="{{ BASE }}shopping/item/toggle" class="inline">
-                      <input type="hidden" name="item_id" value="{{ I.id }}">
-                      <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
-                      <button class="btn sm secondary">Décocher</button>
-                    </form>
-                  {% endif %}
-                  <form method="post" action="{{ BASE }}shopping/item/delete" class="inline"
-                        onsubmit="return confirm('Supprimer cet item ?');">
-                    <input type="hidden" name="item_id" value="{{ I.id }}">
-                    <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
-                    <button class="btn sm danger">Suppr.</button>
-                  </form>
-                </td>
-              </tr>
-
-              {% if not I.is_checked %}
-              <!-- panneau Acheter inline -->
-              <tr id="buy-{{ I.id }}" class="buy-row" hidden>
-                <td colspan="4">
-                  <form method="post" action="{{ BASE }}shopping/item/mark_bought"
-                        class="grid buy-grid grid-buy-desktop" aria-label="Valider l’achat">
-                    <input type="hidden" name="item_id" value="{{ I.id }}">
-                    <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
-                    <div>
-                      <label class="label" for="store-{{ I.id }}">Magasin</label>
-                      <input id="store-{{ I.id }}" class="input" name="store" value="{{ I.store or '' }}" placeholder="Nom du magasin">
-                    </div>
-                    <div>
-                      <label class="label" for="shelf-{{ I.id }}">Prix rayon (€/{{ I.unit or I.product_unit or '' }})</label>
-                      <input id="shelf-{{ I.id }}" class="input" name="shelf_unit_price" type="number" step="0.01" min="0"
-                             value="{{ I.shelf_unit_price if I.shelf_unit_price is not none }}">
-                    </div>
-                    <div class="right">
-                      <button class="btn ok">Valider l’achat</button>
-                      <button type="button" class="btn secondary" data-closebuy="#buy-{{ I.id }}">Annuler</button>
-                    </div>
-                  </form>
-                </td>
-              </tr>
-              {% endif %}
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-
-        <!-- Cartes mobile -->
-        <div class="cards show-mobile" role="list">
-          {% for I in ITEMS %}
-          <article class="card {% if I.is_checked %}checked{% endif %}" role="listitem">
-            <header class="card-h">
-              <strong>{{ I.product_name }}</strong>
-              {% if I.product_unit %}<span class="muted">— {{ I.product_unit }}</span>{% endif %}
-            </header>
-            <div class="card-c">
-              <div class="kv">
-                <div><span class="k">Qté</span><span class="v">{{ I.qty }} {{ I.unit or I.product_unit or '' }}</span></div>
-                {% if I.note %}<div><span class="k">Note</span><span class="v mono">{{ I.note }}</span></div>{% endif %}
-                {% if I.store %}<div><span class="k">Magasin</span><span class="v">{{ I.store }}</span></div>{% endif %}
-                {% if I.shelf_unit_price is not none %}<div><span class="k">Prix rayon</span><span class="v">{{ '%.2f'|format(I.shelf_unit_price) }} €</span></div>{% endif %}
-                {% if I.ticket_unit_price is not none %}
-                  <div><span class="k">Ticket</span><span class="v">{{ '%.2f'|format(I.ticket_unit_price) }} € (Δ {{ '%.2f'|format(I.price_delta or (I.ticket_unit_price - (I.shelf_unit_price or 0))) }} €)</span></div>
+      <!-- Table desktop -->
+      <div class="table-wrap hide-mobile">
+        <table class="table" aria-describedby="table-caption">
+          <caption id="table-caption" class="sr-only">Tableau des articles de la liste</caption>
+          <colgroup>
+            <col style="width:42%">
+            <col style="width:10%">
+            <col style="width:20%">
+            <col style="width:28%">
+          </colgroup>
+          <thead>
+            <tr>
+              <th scope="col">Produit</th>
+              <th scope="col">Qté</th>
+              <th scope="col">Note</th>
+              <th scope="col" class="right">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for I in ITEMS %}
+            <tr class="{% if I.is_checked %}checked{% endif %}">
+              <td>
+                <div><strong class="mono">{{ I.product_name }}</strong></div>
+                {% if I.product_unit %}<small class="muted">Unité: {{ I.product_unit }}</small>{% endif %}
+                {% if I.store %}<div><small class="muted">Magasin: {{ I.store }}</small></div>{% endif %}
+                {% if I.shelf_unit_price is not none %}
+                <div><small class="muted">Prix rayon: {{ '%.2f'|format(I.shelf_unit_price) }} € / {{ I.unit or
+                    I.product_unit or '' }}</small></div>
                 {% endif %}
-              </div>
-            </div>
-            <footer class="card-f right">
-              {% if not I.is_checked %}
-                <button class="btn xs ok" data-buy="#mbuy-{{ I.id }}">Acheter</button>
+                {% if I.ticket_unit_price is not none %}
+                <div><small class="muted">Ticket: {{ '%.2f'|format(I.ticket_unit_price) }} € (Δ {{
+                    '%.2f'|format(I.price_delta or (I.ticket_unit_price - (I.shelf_unit_price or 0))) }} €)</small>
+                </div>
+                {% endif %}
+              </td>
+              <td>{{ I.qty }} <span class="muted">{{ I.unit or I.product_unit or '' }}</span></td>
+              <td class="mono">{{ I.note or '' }}</td>
+              <td class="right">
+                {% if not I.is_checked %}
+                <button class="btn sm ok" data-buy="#buy-{{ I.id }}">Acheter</button>
                 <form method="post" action="{{ BASE }}shopping/item/toggle" class="inline">
                   <input type="hidden" name="item_id" value="{{ I.id }}">
                   <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
-                  <button class="btn xs secondary">Cocher</button>
+                  <button class="btn sm secondary">Cocher</button>
                 </form>
-              {% else %}
+                {% else %}
                 <form method="post" action="{{ BASE }}shopping/item/toggle" class="inline">
                   <input type="hidden" name="item_id" value="{{ I.id }}">
                   <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
-                  <button class="btn xs secondary">Décocher</button>
+                  <button class="btn sm secondary">Décocher</button>
                 </form>
-              {% endif %}
-              <form method="post" action="{{ BASE }}shopping/item/delete" class="inline"
-                    onsubmit="return confirm('Supprimer cet item ?');">
-                <input type="hidden" name="item_id" value="{{ I.id }}">
-                <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
-                <button class="btn xs danger">Suppr.</button>
-              </form>
-            </footer>
+                {% endif %}
+                <form method="post" action="{{ BASE }}shopping/item/delete" class="inline"
+                  onsubmit="return confirm('Supprimer cet item ?');">
+                  <input type="hidden" name="item_id" value="{{ I.id }}">
+                  <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
+                  <button class="btn sm danger">Suppr.</button>
+                </form>
+              </td>
+            </tr>
 
             {% if not I.is_checked %}
-            <div id="mbuy-{{ I.id }}" class="mobile-buy" hidden>
-              <form method="post" action="{{ BASE }}shopping/item/mark_bought"
-                    class="grid buy-grid grid-buy-mobile" aria-label="Valider l’achat (mobile)">
-                <input type="hidden" name="item_id" value="{{ I.id }}">
-                <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
-                <div>
-                  <label class="label" for="mstore-{{ I.id }}">Magasin</label>
-                  <input id="mstore-{{ I.id }}" class="input" name="store" value="{{ I.store or '' }}">
-                </div>
-                <div>
-                  <label class="label" for="mshelf-{{ I.id }}">Prix rayon (€/{{ I.unit or I.product_unit or '' }})</label>
-                  <input id="mshelf-{{ I.id }}" class="input" name="shelf_unit_price" type="number" step="0.01" min="0"
-                         value="{{ I.shelf_unit_price if I.shelf_unit_price is not none }}">
-                </div>
-                <div class="right" style="grid-column:1 / -1">
-                  <button class="btn ok">Valider</button>
-                  <button type="button" class="btn secondary" data-closebuy="#mbuy-{{ I.id }}">Annuler</button>
-                </div>
-              </form>
-            </div>
+            <!-- panneau Acheter inline -->
+            <tr id="buy-{{ I.id }}" class="buy-row" hidden>
+              <td colspan="4">
+                <form method="post" action="{{ BASE }}shopping/item/mark_bought" class="grid buy-grid grid-buy-desktop"
+                  aria-label="Valider l’achat">
+                  <input type="hidden" name="item_id" value="{{ I.id }}">
+                  <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
+                  <div>
+                    <label class="label" for="store-{{ I.id }}">Magasin</label>
+                    <input id="store-{{ I.id }}" class="input" name="store" value="{{ I.store or '' }}"
+                      placeholder="Nom du magasin">
+                  </div>
+                  <div>
+                    <label class="label" for="shelf-{{ I.id }}">Prix rayon (€/{{ I.unit or I.product_unit or ''
+                      }})</label>
+                    <input id="shelf-{{ I.id }}" class="input" name="shelf_unit_price" type="number" step="0.01" min="0"
+                      value="{{ I.shelf_unit_price if I.shelf_unit_price is not none }}">
+                  </div>
+                  <div class="right">
+                    <button class="btn ok">Valider l’achat</button>
+                    <button type="button" class="btn secondary" data-closebuy="#buy-{{ I.id }}">Annuler</button>
+                  </div>
+                </form>
+              </td>
+            </tr>
             {% endif %}
-          </article>
-          {% endfor %}
-        </div>
-
-        {% endif %}
+            {% endfor %}
+          </tbody>
+        </table>
       </div>
+
+      <!-- Cartes mobile -->
+      <div class="cards show-mobile" role="list">
+        {% for I in ITEMS %}
+        <article class="card {% if I.is_checked %}checked{% endif %}" role="listitem">
+          <header class="card-h">
+            <strong>{{ I.product_name }}</strong>
+            {% if I.product_unit %}<span class="muted">— {{ I.product_unit }}</span>{% endif %}
+          </header>
+          <div class="card-c">
+            <div class="kv">
+              <div><span class="k">Qté</span><span class="v">{{ I.qty }} {{ I.unit or I.product_unit or '' }}</span>
+              </div>
+              {% if I.note %}<div><span class="k">Note</span><span class="v mono">{{ I.note }}</span></div>{% endif %}
+              {% if I.store %}<div><span class="k">Magasin</span><span class="v">{{ I.store }}</span></div>{% endif %}
+              {% if I.shelf_unit_price is not none %}<div><span class="k">Prix rayon</span><span class="v">{{
+                  '%.2f'|format(I.shelf_unit_price) }} €</span></div>{% endif %}
+              {% if I.ticket_unit_price is not none %}
+              <div><span class="k">Ticket</span><span class="v">{{ '%.2f'|format(I.ticket_unit_price) }} € (Δ {{
+                  '%.2f'|format(I.price_delta or (I.ticket_unit_price - (I.shelf_unit_price or 0))) }} €)</span></div>
+              {% endif %}
+            </div>
+          </div>
+          <footer class="card-f right">
+            {% if not I.is_checked %}
+            <button class="btn xs ok" data-buy="#mbuy-{{ I.id }}">Acheter</button>
+            <form method="post" action="{{ BASE }}shopping/item/toggle" class="inline">
+              <input type="hidden" name="item_id" value="{{ I.id }}">
+              <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
+              <button class="btn xs secondary">Cocher</button>
+            </form>
+            {% else %}
+            <form method="post" action="{{ BASE }}shopping/item/toggle" class="inline">
+              <input type="hidden" name="item_id" value="{{ I.id }}">
+              <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
+              <button class="btn xs secondary">Décocher</button>
+            </form>
+            {% endif %}
+            <form method="post" action="{{ BASE }}shopping/item/delete" class="inline"
+              onsubmit="return confirm('Supprimer cet item ?');">
+              <input type="hidden" name="item_id" value="{{ I.id }}">
+              <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
+              <button class="btn xs danger">Suppr.</button>
+            </form>
+          </footer>
+
+          {% if not I.is_checked %}
+          <div id="mbuy-{{ I.id }}" class="mobile-buy" hidden>
+            <form method="post" action="{{ BASE }}shopping/item/mark_bought" class="grid buy-grid grid-buy-mobile"
+              aria-label="Valider l’achat (mobile)">
+              <input type="hidden" name="item_id" value="{{ I.id }}">
+              <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
+              <div>
+                <label class="label" for="mstore-{{ I.id }}">Magasin</label>
+                <input id="mstore-{{ I.id }}" class="input" name="store" value="{{ I.store or '' }}">
+              </div>
+              <div>
+                <label class="label" for="mshelf-{{ I.id }}">Prix rayon (€/{{ I.unit or I.product_unit or '' }})</label>
+                <input id="mshelf-{{ I.id }}" class="input" name="shelf_unit_price" type="number" step="0.01" min="0"
+                  value="{{ I.shelf_unit_price if I.shelf_unit_price is not none }}">
+              </div>
+              <div class="right" style="grid-column:1 / -1">
+                <button class="btn ok">Valider</button>
+                <button type="button" class="btn secondary" data-closebuy="#mbuy-{{ I.id }}">Annuler</button>
+              </div>
+            </form>
+          </div>
+          {% endif %}
+        </article>
+        {% endfor %}
+      </div>
+
+      {% endif %}
     </div>
   </section>
 
-  <!-- Carte 5 : Contrôle ticket -->
+  <!-- Carte 4 : Contrôle ticket -->
   {% if PURCHASED_TODAY and PURCHASED_TODAY|length>0 %}
-  <section class="abox v2">
+  <section class="abox v2" aria-labelledby="h-ticket">
     <header class="abox-h">
-      <strong>🧾 Contrôle ticket (aujourd’hui)</strong>
+      <strong id="h-ticket">🧾 Contrôle ticket (aujourd’hui)</strong>
       <span class="muted">Anomalies: {{ ANOMALIES }} • Δ total: {{ '%.2f'|format(TOTAL_DELTA) }} €</span>
     </header>
     <div class="abox-c">
@@ -323,7 +326,8 @@
           <tbody>
             {% for I in PURCHASED_TODAY %}
             {% set delta = I.price_delta if I.price_delta is not none else I.computed_delta %}
-            <tr class="{% if delta is not none and delta > 0.009 %}warn{% elif delta is not none and delta < -0.009 %}ok{% endif %}">
+            <tr
+              class="{% if delta is not none and delta > 0.009 %}warn{% elif delta is not none and delta < -0.009 %}ok{% endif %}">
               <td>
                 <div class="mono">{{ I.product_name }}</div>
                 {% if I.store %}<small class="muted">Magasin: {{ I.store }}</small>{% endif %}
@@ -336,7 +340,7 @@
                   <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
                   <label class="sr-only" for="ticket-{{ I.id }}">Prix ticket</label>
                   <input id="ticket-{{ I.id }}" class="input xs" type="number" step="0.01" min="0"
-                         name="ticket_unit_price" value="{{ I.ticket_unit_price if I.ticket_unit_price is not none }}">
+                    name="ticket_unit_price" value="{{ I.ticket_unit_price if I.ticket_unit_price is not none }}">
                   <button class="btn xs">OK</button>
                 </form>
                 {% if delta is not none %}<small class="muted">Δ {{ '%.2f'|format(delta) }} €</small>{% endif %}
@@ -355,13 +359,13 @@
 
 {% block scripts %}
 <script>
-  // 1) Normalisation des actions pour éviter // et garantir {{ BASE }}shopping/...
+  // Normalisation des actions
   (function () {
     const BASE = "{{ BASE }}";
     function joinBase(path) {
       path = String(path || "").replace(/^\//, "");
       let url = BASE + path;
-      url = url.replace(/([^:]\/)\/+/g, "$1"); // compactage //
+      url = url.replace(/([^:]\/)\/+/g, "$1");
       return url;
     }
     document.querySelectorAll('form').forEach(form => {
@@ -370,14 +374,12 @@
         const m = act.match(/shopping\/[a-z_\/]+$/i);
         if (m) act = m[0];
         act = act.replace(/^\/+/, "");
-        if (/^shopping(\/|$)/.test(act)) {
-          form.setAttribute('action', joinBase(act));
-        }
+        if (/^shopping(\/|$)/.test(act)) form.setAttribute('action', joinBase(act));
       }
     });
   })();
 
-  // 2) Toggle panneaux "Acheter" (délégation + support clavier)
+  // Toggle panneaux "Acheter"
   (function () {
     document.addEventListener("click", (e) => {
       const btn = e.target.closest("[data-buy], [data-closebuy]");
@@ -387,28 +389,22 @@
       if (!row) return;
       if (btn.hasAttribute("data-buy")) {
         row.hidden = !row.hidden;
-        if (!row.hidden) {
-          const focusable = row.querySelector("input,button,select,textarea");
-          focusable && focusable.focus({ preventScroll: true });
-        }
+        if (!row.hidden) row.querySelector("input,button,select,textarea")?.focus({ preventScroll: true });
       } else {
         row.hidden = true;
       }
     });
     document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") {
-        document.querySelectorAll('.buy-row:not([hidden]), .mobile-buy:not([hidden])')
-                .forEach(el => el.hidden = true);
-      }
+      if (e.key === "Escape") document.querySelectorAll('.buy-row:not([hidden]), .mobile-buy:not([hidden])').forEach(el => el.hidden = true);
     });
   })();
 
-  // 3) Ajout: transformer "123 — Nom (unité)" -> product_id
+  // Ajout: transformer "123 — Nom (unité)" -> product_id
   (function () {
     const form = document.querySelector('form[action*="shopping/item/add"]');
     if (!form) return;
     const disp = form.querySelector('input[name="product_id_display"]');
-    const hid  = form.querySelector('#product_id_hidden');
+    const hid = form.querySelector('#product_id_hidden');
     const unit = form.querySelector('input[name="unit"]');
 
     function extract() {
@@ -430,7 +426,7 @@
     });
   })();
 
-  // 4) Toast via ?toast=
+  // Toast via ?toast=
   (function () {
     const u = new URL(window.location);
     const t = u.searchParams.get("toast");

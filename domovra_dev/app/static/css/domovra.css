@@ -2840,10 +2840,7 @@ html[data-theme="light"] .kofi-outline {
 /* ========== 18) Page shopping (/shopping) ================================= */
 /* ========================================================================== */
 
-/* ===== Domovra — Shopping (scopé) ===== */
-
 .wrap[data-page="shopping"] {
-    /* mêmes conventions que .wrap des autres pages */
     --gap: 12px;
     --radius: 14px;
     --border: var(--line);
@@ -2853,12 +2850,12 @@ html[data-theme="light"] .kofi-outline {
     --danger: var(--toast-error);
 }
 
-/* Empilement des cartes (comme Accueil) */
+/* Espacement entre cartes */
 .wrap[data-page="shopping"] .abox.v2+.abox.v2 {
     margin-top: 12px;
 }
 
-/* Toolbar (mêmes pilules / densité que Accueil) */
+/* Toolbar état — chips identiques au reste */
 .shopping-toolbar {
     position: sticky;
     top: .5rem;
@@ -2901,7 +2898,7 @@ html[data-theme="light"] .kofi-outline {
     border-color: color-mix(in oklab, var(--warn) 40%, transparent);
 }
 
-/* Cartes principales : même look que .wrap .card */
+/* Cartes */
 .wrap[data-page="shopping"] .abox.v2 {
     background: var(--bg-card);
     border: 1px solid var(--line);
@@ -2928,21 +2925,14 @@ html[data-theme="light"] .kofi-outline {
     padding: 12px;
 }
 
-/* Sous-carte “Ajouter un produit” allégée (si imbriquée) */
+/* Sous-carte allégée si imbriquée */
 .wrap[data-page="shopping"] .abox.v2 .abox.v2 {
     background: transparent;
     border: 1px dashed var(--line);
     box-shadow: none;
 }
 
-/* Toolbar secondaire + boutons */
-.wrap[data-page="shopping"] .toolbar {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-    margin-top: 8px;
-}
-
+/* Boutons */
 .wrap[data-page="shopping"] .btn.sm {
     padding: 8px 10px;
     border-radius: 10px;
@@ -2958,7 +2948,6 @@ html[data-theme="light"] .kofi-outline {
     border: 1px solid var(--line);
 }
 
-/* Bouton “ok” (Acheter / Valider) cohérent avec la palette */
 .wrap[data-page="shopping"] .btn.ok {
     background: var(--ok);
     border: 0;
@@ -2966,7 +2955,7 @@ html[data-theme="light"] .kofi-outline {
     font-weight: 600;
 }
 
-/* Grilles & inputs (rythme .wrap) */
+/* Grilles & inputs */
 .wrap[data-page="shopping"] .grid-2 {
     display: grid;
     grid-template-columns: 1fr auto;
@@ -3005,24 +2994,15 @@ html[data-theme="light"] .kofi-outline {
     min-height: 36px;
 }
 
-/* Ajout produit : CTA vert + placeholder */
 .wrap[data-page="shopping"] form[action*="shopping/item/add"] .input::placeholder {
     color: var(--text-muted);
 }
 
-.wrap[data-page="shopping"] form[action*="shopping/item/add"] .btn {
-    background: var(--ok);
-    border: 0;
-    color: #0e1a0f;
-    font-weight: 600;
-}
-
-/* Sélecteur de liste compact */
 .wrap[data-page="shopping"] select[name="list"] {
     max-width: 320px;
 }
 
-/* Table desktop — border-bottom + hover (aligné avec Accueil/Produits/Stocks) */
+/* Table desktop — border-bottom + hover */
 .wrap[data-page="shopping"] .table-wrap {
     border: 1px solid var(--line);
     border-radius: 12px;
@@ -3078,7 +3058,7 @@ html[data-theme="light"] .wrap[data-page="shopping"] table.table tbody tr:hover 
     text-align: right;
 }
 
-/* Cartes mobile — même base que .wrap .card */
+/* Cartes mobile */
 .wrap[data-page="shopping"] .cards {
     display: grid;
     gap: 10px;
@@ -3130,7 +3110,7 @@ html[data-theme="light"] .wrap[data-page="shopping"] table.table tbody tr:hover 
     border: 0;
 }
 
-/* Buy-row (inline) */
+/* Panneau "Acheter" inline */
 .wrap[data-page="shopping"] tr.buy-row td {
     background: transparent;
     border-top: 1px solid var(--line);
@@ -3157,16 +3137,15 @@ html[data-theme="light"] .wrap[data-page="shopping"] table.table tbody tr:hover 
     }
 }
 
-/* Impression (règles sobres) */
+/* Impression */
 @media print {
 
     .shopping-toolbar,
-    .toolbar,
-    .btn,
-    .card-f,
     nav,
     header,
-    footer {
+    footer,
+    .btn,
+    .card-f {
         display: none !important;
     }
 
@@ -3187,8 +3166,8 @@ html[data-theme="light"] .wrap[data-page="shopping"] table.table tbody tr:hover 
     display: none !important;
 }
 
-/* Réduire les motions si demandé */
-@media (prefers-reduced-motion: reduce) {
+/* Motion */
+@media (prefers-reduced-motion:reduce) {
     .wrap[data-page="shopping"] * {
         transition: none !important;
     }
