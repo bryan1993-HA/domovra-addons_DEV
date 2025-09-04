@@ -1,88 +1,199 @@
 {% extends "base.html" %}
-.stack { display: grid; gap: .5rem; }
-.row { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }
-.add-line { display: grid; grid-template-columns: 2fr 1fr .8fr .8fr auto; gap: .5rem; }
+{% block title %}Domovra — Liste de courses (démo){% endblock %}
 
+{% block header_right %}
+{# -- Données de démo si rien n'est fourni -- #}
+{% set demo_lists = [{'id':1,'name':'Liste par défaut'},{'id':2,'name':'Barbecue'},{'id':3,'name':'Semaine'}] %}
+{% set lists = lists|default(demo_lists) %}
+{% set current_list = current_list|default(demo_lists[0]) %}
+{% set demo_items = [
+{'id':101,'product_name':'Lait demi écrémé','product_category':'Frais','qty_wanted':2,'is_checked':0},
+{'id':102,'product_name':'Bière','product_category':'Boissons','qty_wanted':12,'is_checked':0},
+{'id':103,'product_name':'Pâtes','product_category':'Épicerie','qty_wanted':3,'is_checked':1},
+{'id':104,'product_name':'Crème fraîche','product_category':'Frais','qty_wanted':1,'is_checked':0},
+] %}
+{% set items = items|default(demo_items) %}
+<span class="chip">🧾 Liste de courses : <b>{{ items|length }}</b></span>
+{% endblock %}
 
-/* Tables desktop */
-.table { width: 100%; border-collapse: collapse; background: var(--card-bg, #fff); border: 1px solid #ddd; }
-.table th, .table td { padding: .5rem .6rem; border-top: 1px solid #eee; vertical-align: middle; }
-.table th { text-align: left; background: #fafafa; }
-.table td.num, .table th.num { text-align: right; }
-.table tr.checked .name .pname { text-decoration: line-through; opacity: .6; }
-.table .pcat { font-size: .85em; color: #666; }
-.table .note { color: #444; font-style: italic; }
-.table td.check { width: 2rem; }
-.table .actions { width: 1px; white-space: nowrap; }
-.qty input[type=number] { width: 6ch; }
+{% block content %}
+<div class="wrap" data-page="shopping">
 
+  <div class="card">
+    <div class="title">
+      <h2>🧾 Liste de courses</h2>
+      <span class="muted">→ maquette visuelle (aucune action serveur)</span>
+    </div>
 
-/* Cartes mobile */
-.cards { display: grid; gap: .75rem; }
-.card { border: 1px solid #e5e5e5; border-radius: .75rem; overflow: hidden; background: var(--card-bg, #fff); }
-.card header { display: grid; grid-template-columns: auto 1fr auto; gap: .5rem; align-items: center; padding: .6rem
-.7rem; background: #fafafa; }
-.card .title { font-weight: 600; }
-.card .subtitle { font-size: .85em; color: #666; }
-.card .content { display: flex; align-items: center; gap: .5rem; padding: .6rem .7rem; }
-.card .content .grow { flex: 1; display: inline-flex; align-items: center; gap: .5rem; }
-.card.checked .title { text-decoration: line-through; opacity: .6; }
+    <!-- Barre d'actions haut -->
+    <div class="actions" style="display:grid;gap:.75rem;grid-template-columns:1fr auto auto;align-items:end">
+      <div>
+        <label class="lbl" for="l">Liste</label>
+        <select id="l" disabled title="Démo visuelle">
+          {% for L in lists %}
+          <option value="{{ L.id }}" {% if L.id==current_list.id %}selected{% endif %}>{{ L.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="lbl">&nbsp;</label>
+        <button class="btn" disabled>Ouvrir</button>
+      </div>
+      <div>
+        <label class="lbl">&nbsp;</label>
+        <button class="btn" disabled>Générer (ruptures + &lt; min)</button>
+      </div>
+    </div>
 
+    <!-- Créer une nouvelle liste -->
+    <div style="margin-top:.75rem;display:grid;gap:.5rem;grid-template-columns:1fr auto">
+      <input type="text" placeholder="Créer une nouvelle liste…" disabled>
+      <button class="btn" disabled>Créer</button>
+    </div>
 
-/* Dropdown minimal */
-.dropdown { position: relative; }
-.dropdown > summary { list-style: none; cursor: pointer; padding: .3rem .5rem; border-radius: .5rem; }
-.dropdown.right > summary { justify-self: end; }
-.dropdown .menu { position: absolute; z-index: 20; top: calc(100% + .25rem); left: 0; min-width: 260px; background:
-#fff; border: 1px solid #e5e5e5; border-radius: .6rem; padding: .6rem; box-shadow: 0 10px 25px rgba(0,0,0,.08); }
-.dropdown.right .menu { left: auto; right: 0; }
-.dropdown[open] > summary { background: #f0f0f0; }
+    <!-- Ajouter un produit -->
+    <div style="margin-top:1rem;display:grid;gap:.75rem;grid-template-columns:1fr 140px auto">
+      <select disabled>
+        <option>— Ajouter un produit… —</option>
+        <option>Lait demi écrémé — Frais</option>
+        <option>Bière — Boissons</option>
+        <option>Pâtes — Épicerie</option>
+        <option>Crème fraîche — Frais</option>
+      </select>
+      <input type="number" step="0.01" min="0" value="1" disabled />
+      <button class="btn" disabled>Ajouter</button>
+    </div>
 
+    <!-- Actions liste -->
+    <div style="margin-top:.75rem;display:flex;gap:.5rem;flex-wrap:wrap">
+      <button class="btn" disabled>📥 Export CSV</button>
+      <a class="btn" href="javascript:window.print()">🖨️ Imprimer</a>
+      <button class="btn warn" disabled>🧹 Nettoyer (cochés)</button>
+    </div>
 
-/* Chips / état */
-.chip { display: inline-flex; align-items: center; gap: .4rem; padding: .25rem .5rem; border-radius: 999px; background:
-#f6f6f6; border: 1px solid #e7e7e7; }
-.chip.muted { opacity: .8; }
+    {% if items %}
+    <!-- Desktop -->
+    <table class="table only-desktop" style="margin-top:1rem">
+      <colgroup>
+        <col style="width:42%">
+        <col style="width:18%">
+        <col style="width:18%">
+        <col style="width:22%">
+      </colgroup>
+      <thead>
+        <tr>
+          <th>Produit</th>
+          <th>Catégorie</th>
+          <th>À acheter</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for it in items %}
+        <tr>
+          <td>
+            <div style="display:flex;align-items:center;gap:.5rem">
+              <button class="btn" style="min-width:2rem" disabled>{{ '☑️' if it.is_checked else '⬜' }}</button>
+              <span style="{{ 'text-decoration:line-through;opacity:.6' if it.is_checked else '' }}">{{ it.product_name
+                }}</span>
+              {% if it.product_category in ['Frais','Boucherie'] %}
+              <span class="chip warn" title="Catégorie sensible">⚠️</span>
+              {% endif %}
+            </div>
+          </td>
+          <td class="muted">{{ it.product_category or '—' }}</td>
+          <td>
+            <div style="display:flex;gap:.5rem;align-items:center">
+              <input type="number" step="0.01" min="0" value="{{ it.qty_wanted }}" disabled />
+              <button class="btn" disabled>OK</button>
+            </div>
+          </td>
+          <td>
+            <button class="btn error" disabled>Supprimer</button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
 
+    <!-- Mobile -->
+    <div class="only-mobile" style="display:grid;gap:.75rem;margin-top:1rem">
+      {% for it in items %}
+      <div class="card" style="background:transparent">
+        <div class="title">
+          <h3 style="margin:0">{{ it.product_name }}</h3>
+          <span class="muted">{{ it.product_category or '—' }}</span>
+        </div>
+        <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+          <button class="btn" style="min-width:2rem" disabled>{{ '☑️' if it.is_checked else '⬜' }}</button>
+          <input type="number" step="0.01" min="0" value="{{ it.qty_wanted }}" disabled />
+          <button class="btn" disabled>OK</button>
+          <button class="btn error" disabled>Supprimer</button>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
 
-/* Divers */
-button.danger { background: #ffe9e9; border: 1px solid #ffd0d0; }
-.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0);
-border: 0; }
-.empty { opacity: .7; font-style: italic; margin-top: .5rem; }
+    {% else %}
+    <p class="muted" style="margin-top:1rem">Aucun article (démo).</p>
+    {% endif %}
+  </div>
 
+</div>
+{% endblock %}
 
-/* Mode sombre léger (optionnel) */
-@media (prefers-color-scheme: dark) {
-.table, .card { background: #111; }
-.table th { background: #161616; }
-.table, .card, .dropdown .menu { border-color: #333; }
-.table th, .table td { border-color: #222 !important; }
-}
+{% block head %}
+<style>
+  /* Démo impression : table propre, sans boutons */
+  @media print {
 
+    .actions,
+    form,
+    .btn,
+    .only-mobile,
+    aside,
+    header,
+    .header-right {
+      display: none !important;
+    }
 
-/* Responsive */
-@media (max-width: 860px) {
-.add-line { grid-template-columns: 1.6fr 1fr .8fr .8fr auto; }
-}
-@media (max-width: 700px) {
-.only-desktop { display: none !important; }
-.only-mobile { display: grid !important; }
-.add-line { grid-template-columns: 1.4fr 1fr auto; }
-.add-line input[name=qty_wanted], .add-line input[name=unit] { display: none; }
-}
-@media (min-width: 701px) {
-.only-desktop { display: table !important; }
-.only-mobile { display: none !important; }
-}
+    .only-desktop {
+      display: table !important;
+    }
+
+    .page {
+      padding: 0 !important;
+    }
+
+    .card {
+      box-shadow: none !important;
+    }
+
+    .table th,
+    .table td {
+      border-color: #999 !important;
+    }
+  }
+
+  /* Mutuellement exclusif desktop/mobile (au cas où ta CSS globale ne le force pas) */
+  @media (max-width: 700px) {
+    .only-desktop {
+      display: none !important;
+    }
+
+    .only-mobile {
+      display: grid !important;
+    }
+  }
+
+  @media (min-width: 701px) {
+    .only-desktop {
+      display: table !important;
+    }
+
+    .only-mobile {
+      display: none !important;
+    }
+  }
 </style>
-
-
-<script>
-  // Petite QoL : focus sur le champ d’ajout
-  window.addEventListener('DOMContentLoaded', () => {
-    const el = document.getElementById('add-name');
-    if (el) el.focus();
-  });
-</script>
 {% endblock %}
