@@ -7,6 +7,7 @@ Modification
 shopping.html
 shopping.py
 domovra.css ( partie shopping )
+base.html
 
 ---
 

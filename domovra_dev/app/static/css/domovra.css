@@ -2849,6 +2849,12 @@ html[data-theme="light"] .kofi-outline {
     --inset: inset 0 1px 0 rgba(255, 255, 255, .04);
     --ring: 0 0 0 2px rgba(100, 180, 255, .28);
     --muted: var(--muted, #aaa);
+
+    /* Harmonisation avec Accueil */
+    --r: 12px;
+    /* radius commun */
+    --gap: .6rem;
+    /* rythme d’espacement */
 }
 
 /* ---- Toolbar d’état (en tête de page) ----------------------------------- */
@@ -2860,10 +2866,12 @@ html[data-theme="light"] .kofi-outline {
     align-items: center;
     justify-content: space-between;
     gap: .5rem;
-    padding: .45rem .6rem;
+    padding: .5rem .6rem;
+    /* + léger (Accueil) */
     background: var(--bg2, rgba(255, 255, 255, .04));
     border: 1px solid var(--border, #2e2e2e);
-    border-radius: 12px;
+    border-radius: var(--r);
+    /* radius Accueil */
     margin-bottom: .6rem;
     box-shadow: var(--shadow, 0 8px 20px rgba(0, 0, 0, .12)) var(--inset);
     backdrop-filter: saturate(120%) blur(2px);
@@ -2877,8 +2885,9 @@ html[data-theme="light"] .kofi-outline {
 }
 
 .shopping-toolbar .chip {
-    padding: .28rem .55rem;
-    font-size: .88rem
+    padding: .34rem .62rem;
+    font-size: .88rem;
+    font-weight: 500;
 }
 
 /* ---- Chips --------------------------------------------------------------- */
@@ -2917,22 +2926,26 @@ html[data-theme="light"] .kofi-outline {
 
 .wrap[data-page="shopping"] .chip.muted {
     color: var(--muted, #9aa);
-    border-style: dashed;
+    border-style: solid;
+    opacity: .9;
 }
 
 /* ---- Carte principale ---------------------------------------------------- */
 .wrap[data-page="shopping"] .abox.v2 {
-    border-radius: var(--box-r);
+    border-radius: var(--r);
+    /* radius Accueil */
     border: 1px solid var(--border, #2e2e2e);
-    background: var(--bg1, rgba(0, 0, 0, .18));
-    box-shadow: 0 6px 18px rgba(0, 0, 0, .25);
+    background: var(--bg-panel, rgba(0, 0, 0, .18));
+    /* ton Accueil */
+    box-shadow: 0 10px 24px rgba(0, 0, 0, .22);
 }
 
 .wrap[data-page="shopping"] .abox-h {
     display: flex;
     align-items: center;
     gap: .75rem;
-    padding: .75rem 1rem;
+    padding: .7rem .9rem;
+    /* densité Accueil */
     border-bottom: 1px solid var(--border, #2e2e2e);
 }
 
@@ -2945,6 +2958,14 @@ html[data-theme="light"] .kofi-outline {
 
 .wrap[data-page="shopping"] .abox-c {
     padding: .7rem .9rem;
+}
+
+/* Sous-carte “Ajouter un produit” : allégée (éviter double-cadre lourd) */
+.wrap[data-page="shopping"] .abox.v2 .abox.v2 {
+    background: transparent;
+    border: 1px dashed rgba(255, 255, 255, .12);
+    box-shadow: none;
+    border-radius: var(--r);
 }
 
 /* ---- Toolbar d’actions secondaires -------------------------------------- */
@@ -2968,9 +2989,15 @@ html[data-theme="light"] .kofi-outline {
     border-radius: 9px;
 }
 
-.wrap[data-page="shopping"] .toolbar .btn.secondary {
+.wrap[data-page="shopping"] .toolbar .btn.secondary,
+.wrap[data-page="shopping"] .btn.secondary {
     background: transparent;
-    border-color: var(--border, #2e2e2e);
+    border: 1px solid var(--border, #2e2e2e);
+}
+
+/* Actions en table : éviter l’effet “pastilles” trop massives */
+.wrap[data-page="shopping"] td .btn.sm {
+    padding: .3rem .5rem;
 }
 
 /* ---- Grids & inputs ------------------------------------------------------ */
@@ -2981,22 +3008,28 @@ html[data-theme="light"] .kofi-outline {
 }
 
 .wrap[data-page="shopping"] .input {
-    height: 2.2rem;
+    height: 2.25rem;
+    border-radius: var(--r);
 }
 
 .wrap[data-page="shopping"] .input.xs {
     height: 2rem;
 }
 
+.wrap[data-page="shopping"] .input:focus-visible {
+    outline: none;
+    box-shadow: var(--ring);
+}
+
 .wrap[data-page="shopping"] .grid-2 {
     display: grid;
     grid-template-columns: 1fr auto;
-    gap: .5rem;
+    gap: var(--gap);
 }
 
 .wrap[data-page="shopping"] .grid-add {
     display: grid;
-    gap: .5rem;
+    gap: var(--gap);
     align-items: center;
     grid-template-columns: minmax(260px, 1fr) 120px 160px 1fr auto;
 }
@@ -3036,7 +3069,7 @@ html[data-theme="light"] .kofi-outline {
 
 /* ---- Table: cadre, zébrure & hover -------------------------------------- */
 .wrap[data-page="shopping"] .table-wrap {
-    border-radius: 12px;
+    border-radius: var(--r);
     overflow: hidden;
     border: 1px solid var(--border, #2e2e2e);
 }
@@ -3052,11 +3085,12 @@ html[data-theme="light"] .kofi-outline {
     font-weight: 600;
     letter-spacing: .02em;
     text-transform: none;
+    border-bottom: 1px solid var(--border, #2e2e2e);
 }
 
 .wrap[data-page="shopping"] table.table td,
 .wrap[data-page="shopping"] table.table th {
-    padding: .6rem .7rem;
+    padding: .62rem .7rem;
     vertical-align: top;
 }
 
@@ -3097,7 +3131,7 @@ html[data-theme="light"] .kofi-outline {
 .wrap[data-page="shopping"] .card {
     background: transparent;
     border: 1px solid var(--border, #2e2e2e);
-    border-radius: 12px;
+    border-radius: var(--r);
     overflow: hidden;
 }
 
