@@ -4,24 +4,20 @@
 {% block content %}
 <div class="wrap" data-page="shopping">
 
-  <!-- Titre page + badge compteur -->
-  <header class="page-header">
-    <h1>Domovra — <span class="muted">🛒 Liste de courses <small>(En travaux)</small></span></h1>
+  <!-- Chips état -->
+  <div class="chips" style="margin-bottom:.75rem;">
+    <a class="chip {% if STATUS!='done' %}active{% endif %}"
+      href="{{ BASE }}shopping?list={{ ACTIVE_LIST_ID }}&status=todo">À acheter</a>
+    <a class="chip {% if STATUS=='done' %}active{% endif %}"
+      href="{{ BASE }}shopping?list={{ ACTIVE_LIST_ID }}&status=done">Achetés</a>
+    <span class="chip muted">🧾 Ticket: {{ PURCHASED_TODAY|length or 0 }}</span>
+    <span class="chip {% if ANOMALIES>0 %}warn{% else %}ok{% endif %}">
+      Δ total: {{ '%.2f'|format(TOTAL_DELTA) }} €
+    </span>
+  </div>
 
-    <div class="chips">
-      <a class="chip {% if STATUS!='done' %}active{% endif %}"
-        href="{{ BASE }}shopping?list={{ ACTIVE_LIST_ID }}&status=todo">À acheter</a>
-      <a class="chip {% if STATUS=='done' %}active{% endif %}"
-        href="{{ BASE }}shopping?list={{ ACTIVE_LIST_ID }}&status=done">Achetés</a>
-      <span class="chip muted">🧾 Ticket: {{ PURCHASED_TODAY|length or 0 }}</span>
-      <span class="chip {% if ANOMALIES>0 %}warn{% else %}ok{% endif %}">
-        Δ total: {{ '%.2f'|format(TOTAL_DELTA) }} €
-      </span>
-    </div>
-  </header>
-
-  <!-- Carte principale style "maquette" -->
-  <section class="abox v2" style="margin-top: .75rem;">
+  <!-- Carte principale -->
+  <section class="abox v2">
     <header class="abox-h">
       <strong>🧾 Liste de courses</strong>
       <span class="muted">→ maquette visuelle (style) + actions réelles</span>
