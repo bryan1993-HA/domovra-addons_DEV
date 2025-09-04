@@ -2842,22 +2842,18 @@ html[data-theme="light"] .kofi-outline {
 
 /* ===== Domovra — Shopping (scopé) ===== */
 
-/* ---- Tokens locaux page (sans casser le thème global) -------------------- */
 .wrap[data-page="shopping"] {
-    --chip-radius: 999px;
-    --box-r: 14px;
-    --inset: inset 0 1px 0 rgba(255, 255, 255, .04);
-    --ring: 0 0 0 2px rgba(100, 180, 255, .28);
-    --muted: var(--muted, #aaa);
-
-    /* Harmonisation avec Accueil */
-    --r: 12px;
-    /* radius commun */
-    --gap: .6rem;
-    /* rythme d’espacement */
+    /* mêmes conventions que .wrap des autres pages */
+    --gap: 12px;
+    --radius: 14px;
+    --border: var(--line);
+    --muted: var(--text-muted);
+    --ok: var(--toast-ok);
+    --warn: var(--toast-warn);
+    --danger: var(--toast-error);
 }
 
-/* ---- Toolbar d’état (en tête de page) ----------------------------------- */
+/* Toolbar (mêmes pilules / densité que Accueil) */
 .shopping-toolbar {
     position: sticky;
     top: .5rem;
@@ -2865,255 +2861,195 @@ html[data-theme="light"] .kofi-outline {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: .5rem;
-    padding: .5rem .6rem;
-    /* + léger (Accueil) */
-    background: var(--bg2, rgba(255, 255, 255, .04));
-    border: 1px solid var(--border, #2e2e2e);
-    border-radius: var(--r);
-    /* radius Accueil */
-    margin-bottom: .6rem;
-    box-shadow: var(--shadow, 0 8px 20px rgba(0, 0, 0, .12)) var(--inset);
-    backdrop-filter: saturate(120%) blur(2px);
+    gap: 8px;
+    padding: 10px 12px;
+    background: var(--bg-card);
+    border: 1px solid var(--line);
+    border-radius: 12px;
 }
 
 .shopping-toolbar .left,
 .shopping-toolbar .right {
     display: flex;
-    gap: .4rem;
+    gap: 8px;
     align-items: center;
 }
 
 .shopping-toolbar .chip {
-    padding: .34rem .62rem;
-    font-size: .88rem;
-    font-weight: 500;
+    background: var(--bg-card);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 6px 10px;
 }
 
-/* ---- Chips --------------------------------------------------------------- */
-.wrap[data-page="shopping"] .chip {
-    padding: .35rem .6rem;
-    border-radius: var(--chip-radius);
-    border: 1px solid var(--border, #333);
-    background: var(--bg2, rgba(255, 255, 255, .04));
-    font-size: .9rem;
-    line-height: 1;
-    transition: background .18s ease, border-color .18s ease, color .18s ease;
+.shopping-toolbar .chip.active {
+    box-shadow: 0 0 0 1px inset var(--line);
 }
 
-.wrap[data-page="shopping"] .chip:hover {
-    background: var(--bg3, rgba(255, 255, 255, .08));
+.shopping-toolbar .chip.ok {
+    color: var(--ok);
+    border-color: color-mix(in oklab, var(--ok) 40%, transparent);
 }
 
-.wrap[data-page="shopping"] .chip:focus-visible {
-    outline: none;
-    box-shadow: var(--ring);
+.shopping-toolbar .chip.warn {
+    color: var(--warn);
+    border-color: color-mix(in oklab, var(--warn) 40%, transparent);
 }
 
-.wrap[data-page="shopping"] .chip.active {
-    background: var(--bg3, rgba(255, 255, 255, .10));
-}
-
-.wrap[data-page="shopping"] .chip.ok {
-    border-color: var(--ok, #4caf50);
-    color: var(--ok, #4caf50);
-}
-
-.wrap[data-page="shopping"] .chip.warn {
-    border-color: var(--warn, #ffb300);
-    color: var(--warn, #ffb300);
-}
-
-.wrap[data-page="shopping"] .chip.muted {
-    color: var(--muted, #9aa);
-    border-style: solid;
-    opacity: .9;
-}
-
-/* ---- Carte principale ---------------------------------------------------- */
+/* Cartes principales : même look que .wrap .card */
 .wrap[data-page="shopping"] .abox.v2 {
-    border-radius: var(--r);
-    /* radius Accueil */
-    border: 1px solid var(--border, #2e2e2e);
-    background: var(--bg-panel, rgba(0, 0, 0, .18));
-    /* ton Accueil */
-    box-shadow: 0 10px 24px rgba(0, 0, 0, .22);
+    background: var(--bg-card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: none;
 }
 
 .wrap[data-page="shopping"] .abox-h {
     display: flex;
     align-items: center;
-    gap: .75rem;
-    padding: .7rem .9rem;
-    /* densité Accueil */
-    border-bottom: 1px solid var(--border, #2e2e2e);
-}
-
-.wrap[data-page="shopping"] .abox-h .right {
-    margin-left: auto;
-    display: flex;
-    gap: .5rem;
-    flex-wrap: wrap;
+    gap: 10px;
+    padding: 12px;
+    border-bottom: 1px solid var(--line);
 }
 
 .wrap[data-page="shopping"] .abox-c {
-    padding: .7rem .9rem;
+    padding: 12px;
 }
 
-/* Sous-carte “Ajouter un produit” : allégée (éviter double-cadre lourd) */
+/* Sous-carte “Ajouter un produit” allégée */
 .wrap[data-page="shopping"] .abox.v2 .abox.v2 {
     background: transparent;
-    border: 1px dashed rgba(255, 255, 255, .12);
+    border: 1px dashed var(--line);
     box-shadow: none;
-    border-radius: var(--r);
 }
 
-/* ---- Toolbar d’actions secondaires -------------------------------------- */
+/* Toolbar secondaire + boutons */
 .wrap[data-page="shopping"] .toolbar {
-    margin-top: .6rem;
     display: flex;
-    gap: .5rem;
-    align-items: center;
+    gap: 8px;
     flex-wrap: wrap;
+    margin-top: 8px;
 }
 
 .wrap[data-page="shopping"] .btn.sm {
-    padding: .35rem .6rem;
-    font-size: .9rem;
+    padding: 8px 10px;
     border-radius: 10px;
 }
 
 .wrap[data-page="shopping"] .btn.xs {
-    padding: .22rem .5rem;
-    font-size: .82rem;
+    padding: 6px 8px;
     border-radius: 9px;
 }
 
-.wrap[data-page="shopping"] .toolbar .btn.secondary,
 .wrap[data-page="shopping"] .btn.secondary {
     background: transparent;
-    border: 1px solid var(--border, #2e2e2e);
+    border: 1px solid var(--line);
 }
 
-/* Actions en table : éviter l’effet “pastilles” trop massives */
-.wrap[data-page="shopping"] td .btn.sm {
-    padding: .3rem .5rem;
-}
-
-/* ---- Grids & inputs ------------------------------------------------------ */
-.wrap[data-page="shopping"] .add-grid,
-.wrap[data-page="shopping"] .buy-grid {
-    display: grid;
-    gap: .5rem;
-}
-
-.wrap[data-page="shopping"] .input {
-    height: 2.25rem;
-    border-radius: var(--r);
-}
-
-.wrap[data-page="shopping"] .input.xs {
-    height: 2rem;
-}
-
-.wrap[data-page="shopping"] .input:focus-visible {
-    outline: none;
-    box-shadow: var(--ring);
-}
-
+/* Grilles & inputs (rythme .wrap) */
 .wrap[data-page="shopping"] .grid-2 {
     display: grid;
     grid-template-columns: 1fr auto;
-    gap: var(--gap);
+    gap: 12px;
 }
 
 .wrap[data-page="shopping"] .grid-add {
     display: grid;
-    gap: var(--gap);
-    align-items: center;
+    gap: 12px;
+    align-items: end;
     grid-template-columns: minmax(260px, 1fr) 120px 160px 1fr auto;
 }
 
 .wrap[data-page="shopping"] .grid-buy-desktop {
     display: grid;
-    gap: .5rem;
+    gap: 12px;
     align-items: end;
     grid-template-columns: 1.2fr 1fr auto;
 }
 
 .wrap[data-page="shopping"] .grid-buy-mobile {
     display: grid;
-    gap: .5rem;
+    gap: 12px;
     grid-template-columns: 1fr 1fr;
 }
 
-/* Ajout produit : lisibilité & CTA vert */
+.wrap[data-page="shopping"] .input {
+    min-height: 44px;
+    border: 1px solid var(--line);
+    background: transparent;
+    color: inherit;
+    border-radius: 10px;
+}
+
+.wrap[data-page="shopping"] .input.xs {
+    min-height: 36px;
+}
+
+/* Ajout produit : CTA vert (mêmes couleurs que toasts) */
 .wrap[data-page="shopping"] form[action*="shopping/item/add"] .input::placeholder {
-    color: #9aa;
-    opacity: .85;
+    color: var(--text-muted);
 }
 
 .wrap[data-page="shopping"] form[action*="shopping/item/add"] .btn {
-    background: var(--ok, #4caf50);
-    border-color: var(--ok, #4caf50);
+    background: var(--ok);
+    border: 0;
+    color: #0e1a0f;
+    font-weight: 600;
 }
 
-.wrap[data-page="shopping"] form[action*="shopping/item/add"] .btn:hover {
-    filter: brightness(1.08);
-}
-
-/* Sélecteur de liste plus compact */
+/* Sélecteur de liste compact */
 .wrap[data-page="shopping"] select[name="list"] {
     max-width: 320px;
 }
 
-/* ---- Table: cadre, zébrure & hover -------------------------------------- */
+/* Table desktop — même style que 11/12/13/14 (border-bottom only + hover) */
 .wrap[data-page="shopping"] .table-wrap {
-    border-radius: var(--r);
+    border: 1px solid var(--line);
+    border-radius: 12px;
     overflow: hidden;
-    border: 1px solid var(--border, #2e2e2e);
 }
 
 .wrap[data-page="shopping"] table.table {
     width: 100%;
-    border-collapse: separate;
-    border-spacing: 0;
+    border-collapse: collapse;
 }
 
 .wrap[data-page="shopping"] table.table thead th {
-    background: var(--bg3, rgba(255, 255, 255, .06));
-    font-weight: 600;
-    letter-spacing: .02em;
-    text-transform: none;
-    border-bottom: 1px solid var(--border, #2e2e2e);
+    font-size: 12px;
+    color: var(--text-muted);
+    text-align: left;
+    padding: 6px 8px;
+    border: 0;
+    border-bottom: 1px solid var(--line);
+    background: transparent;
 }
 
-.wrap[data-page="shopping"] table.table td,
-.wrap[data-page="shopping"] table.table th {
-    padding: .62rem .7rem;
+.wrap[data-page="shopping"] table.table td {
+    padding: 10px 8px;
+    border: 0;
+    border-bottom: 1px solid var(--line);
     vertical-align: top;
 }
 
-.wrap[data-page="shopping"] .table tbody tr:nth-child(odd) {
-    background: rgba(255, 255, 255, .018);
+.wrap[data-page="shopping"] table.table tbody tr:hover {
+    background: rgba(255, 255, 255, .03);
 }
 
-.wrap[data-page="shopping"] .table tbody tr:hover td {
-    background: rgba(255, 255, 255, .04);
+html[data-theme="light"] .wrap[data-page="shopping"] table.table tbody tr:hover {
+    background: rgba(0, 0, 0, .03);
 }
 
-/* Lignes “checked” plus discrètes */
+/* États & checked */
 .wrap[data-page="shopping"] tr.checked td {
     opacity: .7;
 }
 
-/* États contrôle ticket */
-.wrap[data-page="shopping"] tr.warn {
-    background: rgba(255, 179, 0, .08);
+.wrap[data-page="shopping"] tr.warn td {
+    background: rgba(255, 179, 0, .12);
 }
 
-.wrap[data-page="shopping"] tr.ok {
-    background: rgba(76, 175, 80, .08);
+.wrap[data-page="shopping"] tr.ok td {
+    background: rgba(76, 175, 80, .12);
 }
 
 /* Alignements */
@@ -3122,39 +3058,38 @@ html[data-theme="light"] .kofi-outline {
     text-align: right;
 }
 
-/* ---- Cartes mobile ------------------------------------------------------- */
+/* Cartes mobile — même base que .wrap .card */
 .wrap[data-page="shopping"] .cards {
     display: grid;
-    gap: .5rem;
+    gap: 10px;
 }
 
 .wrap[data-page="shopping"] .card {
     background: transparent;
-    border: 1px solid var(--border, #2e2e2e);
-    border-radius: var(--r);
-    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 0;
 }
 
 .wrap[data-page="shopping"] .card .card-h {
-    padding: .6rem .75rem;
-    border-bottom: 1px solid var(--border, #2e2e2e);
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--line);
     display: flex;
-    gap: .35rem;
+    gap: 8px;
     align-items: baseline;
 }
 
 .wrap[data-page="shopping"] .card .card-c {
-    padding: .6rem .75rem;
+    padding: 10px 12px;
 }
 
 .wrap[data-page="shopping"] .card .card-f {
-    padding: .6rem .75rem;
-    border-top: 1px solid var(--border, #2e2e2e);
+    padding: 10px 12px;
+    border-top: 1px solid var(--line);
 }
 
-/* Typo clé/valeur */
 .wrap[data-page="shopping"] .kv .k {
-    color: var(--muted, #aaa);
+    color: var(--text-muted);
     margin-right: .35rem;
 }
 
@@ -3175,62 +3110,35 @@ html[data-theme="light"] .kofi-outline {
     border: 0;
 }
 
-.wrap[data-page="shopping"] .btn:focus-visible {
-    outline: none;
-    box-shadow: var(--ring);
+/* Buy-row (inline) */
+.wrap[data-page="shopping"] tr.buy-row td {
+    background: transparent;
+    border-top: 1px solid var(--line);
 }
 
-/* Serrage lignes desktop large */
-@media (min-width: 900px) {
-
-    .wrap[data-page="shopping"] table.table td,
-    .wrap[data-page="shopping"] table.table th {
-        padding: .5rem .6rem;
-    }
-}
-
-/* Cacher correctement les blocs mobiles en desktop et inversement */
-@media (min-width: 701px) {
-    .show-mobile {
-        display: none !important;
-    }
-}
-
-@media (max-width: 700px) {
+/* Responsive */
+@media (max-width:700px) {
     .hide-mobile {
         display: none !important;
-    }
-
-    .shopping-toolbar {
-        border-radius: 10px;
-        padding: .4rem .5rem;
-    }
-
-    .shopping-toolbar .chip {
-        padding: .24rem .45rem;
-        font-size: .84rem;
-    }
-
-    .wrap[data-page="shopping"] select[name="list"] {
-        max-width: 100%;
     }
 
     .wrap[data-page="shopping"] .grid-add {
         grid-template-columns: 1fr;
     }
-}
 
-/* Style léger pour la ligne "Acheter" ouverte */
-.wrap[data-page="shopping"] tr.buy-row td {
-    background: var(--bg1, rgba(255, 255, 255, .03));
-    border-top: 1px solid var(--border, #2e2e2e);
-}
-
-/* Impression : liste lisible et sans chrome UI ---------------------------- */
-@media print {
-    body {
-        background: #fff;
+    .wrap[data-page="shopping"] select[name="list"] {
+        max-width: 100%;
     }
+}
+
+@media (min-width:701px) {
+    .show-mobile {
+        display: none !important;
+    }
+}
+
+/* Impression (mêmes règles sobres) */
+@media print {
 
     .shopping-toolbar,
     .toolbar,
@@ -3240,11 +3148,6 @@ html[data-theme="light"] .kofi-outline {
     header,
     footer {
         display: none !important;
-    }
-
-    .wrap[data-page="shopping"] .abox.v2 {
-        box-shadow: none;
-        border-color: #ccc;
     }
 
     .wrap[data-page="shopping"] .table-wrap {
@@ -3257,18 +3160,14 @@ html[data-theme="light"] .kofi-outline {
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
     }
-
-    .wrap[data-page="shopping"] .muted {
-        color: #666 !important;
-    }
 }
 
-/* Respecter l’attribut hidden */
+/* Respecter hidden */
 [hidden] {
     display: none !important;
 }
 
-/* Préférence utilisateur : réduire les animations */
+/* Réduire les motions si demandé */
 @media (prefers-reduced-motion: reduce) {
     .wrap[data-page="shopping"] * {
         transition: none !important;
