@@ -15,6 +15,25 @@ router = APIRouter(tags=["Shopping"])
 DB_PATH = os.environ.get("DB_PATH", "/data/domovra.sqlite3")
 
 
+# --- Compat renderer (2 ou 3 arguments) ---
+def safe_render(request: Request, template_name: str, context: dict):
+    """
+    Rend la template quelle que soit la signature de render_with_env :
+    - (request, template, context)
+    - (request, template, data=context)
+    - (request, template)  -> push le contexte dans request.state
+    """
+    try:
+        return render_with_env(request, template_name, context)
+    except TypeError:
+        try:
+            return render_with_env(request, template_name, data=context)  # type: ignore
+        except TypeError:
+            for k, v in context.items():
+                setattr(request.state, k, v)
+            return render_with_env(request, template_name)  # type: ignore
+
+
 # ---------- Helpers DB ----------
 def get_db():
     conn = sqlite3.connect(DB_PATH)
@@ -190,7 +209,6 @@ def fetch_purchased_today(conn, list_id: int) -> List[Dict[str, Any]]:
     rows = [dict(r) for r in cur.fetchall()]
     for r in rows:
         r.setdefault("product_unit", None)
-        # Recalcule delta en lecture si valeurs présentes mais delta NULL
         s = r.get("shelf_unit_price")
         t = r.get("ticket_unit_price")
         if s is not None and t is not None:
@@ -245,7 +263,7 @@ def page_shopping(
                 if abs(float(d)) > 0.009:  # > 1 centime
                     anomalies += 1
 
-        return render_with_env(
+        return safe_render(
             request,
             "shopping.html",
             {
@@ -375,7 +393,10 @@ def toggle_item(request: Request, item_id: int = Form(...), list_id: int = Form(
                 (item_id,),
             )
         else:
-            cur.execute("UPDATE shopping_items SET is_checked=1, purchased_at=? WHERE id=?", (datetime.utcnow().isoformat(), item_id))
+            cur.execute(
+                "UPDATE shopping_items SET is_checked=1, purchased_at=? WHERE id=?",
+                (datetime.utcnow().isoformat(), item_id),
+            )
         conn.commit()
         log_event("shopping", f"Toggle item id={item_id} → {0 if was_checked else 1}")
         url = f"{ingress_base(request)}/shopping?list={list_id}&toast=toggled"
