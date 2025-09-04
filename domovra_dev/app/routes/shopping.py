@@ -10,9 +10,6 @@ from fastapi.responses import RedirectResponse, HTMLResponse
 from utils.http import ingress_base, render as render_with_env
 from services.events import log_event  # journal Domovra
 
-# 👇 IMPORTANT : on récupère l'env Jinja centralisé défini dans main.py
-from main import templates_env
-
 router = APIRouter(tags=["Shopping"])
 
 DB_PATH = os.environ.get("DB_PATH", "/data/domovra.sqlite3")
@@ -258,7 +255,9 @@ def page_shopping(
             "ANOMALIES": anomalies,
             "TOTAL_DELTA": round(total_delta, 2),
         }
-        # ✅ Appel conforme à utils.http.render(templates_env, name, **ctx)
+
+        # ✅ Utilise l'env Jinja exposé par main.py sans import croisé
+        templates_env = request.app.state.templates
         return render_with_env(templates_env, "shopping.html", **ctx)
     finally:
         conn.close()
