@@ -278,7 +278,7 @@ def create_list(request: Request, name: str = Form(...), emoji: str = Form(""), 
         conn.commit()
         list_id = cur.lastrowid
         log_event("shopping", f"Création liste '{name}' (id={list_id})")
-        url = f"{ingress_base(request)}/shopping?list={list_id}&toast=added_list"
+        url = f"{ingress_base(request)}shopping?list={list_id}&toast=added_list"
         return RedirectResponse(url, status_code=303)
     finally:
         conn.close()
