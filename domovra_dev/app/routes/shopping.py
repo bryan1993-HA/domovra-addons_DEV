@@ -254,6 +254,7 @@ def page_shopping(
             "PURCHASED_TODAY": purchased_today,
             "ANOMALIES": anomalies,
             "TOTAL_DELTA": round(total_delta, 2),
+            "request": request,
         }
 
         # ✅ Utilise l'env Jinja exposé par main.py sans import croisé
