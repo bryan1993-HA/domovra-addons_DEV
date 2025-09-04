@@ -1,7 +1,7 @@
 {
   "name": "Domovra (DEV)",
   "slug": "domovra_dev",
-  "version": "1.4.46-dev.1",
+  "version": "1.4.47-dev.1",
   "stage": "experimental",
   "description": "Version de développement. À utiliser uniquement pour les tests.",
   "url": "https://github.com/bryan1993-HA/domovra-addons_DEV",

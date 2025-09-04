@@ -6,6 +6,7 @@ Liste d'achats:
 Modification
 shopping.html
 shopping.py
+domovra.css ( partie shopping )
 
 ---
 

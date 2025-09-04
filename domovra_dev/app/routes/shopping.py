@@ -19,6 +19,11 @@ DB_PATH = os.environ.get("DB_PATH", "/data/domovra.sqlite3")
 def get_db():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
+    # Sécurité SQLite
+    try:
+        conn.execute("PRAGMA foreign_keys = ON;")
+    except Exception:
+        pass
     return conn
 
 def table_has_column(conn: sqlite3.Connection, table: str, column: str) -> bool:
@@ -257,7 +262,6 @@ def page_shopping(
             "request": request,
         }
 
-        # ✅ Utilise l'env Jinja exposé par main.py sans import croisé
         templates_env = request.app.state.templates
         return render_with_env(templates_env, "shopping.html", **ctx)
     finally:
@@ -291,7 +295,7 @@ def rename_list(request: Request, list_id: int = Form(...), name: str = Form(...
         cur.execute("UPDATE shopping_lists SET name=? WHERE id=?", (name.strip(), list_id))
         conn.commit()
         log_event("shopping", f"Renommage liste id={list_id} → '{name}'")
-        url = f"{ingress_base(request)}/shopping?list={list_id}&toast=renamed_list"
+        url = f"{ingress_base(request)}shopping?list={list_id}&toast=renamed_list"
         return RedirectResponse(url, status_code=303)
     finally:
         conn.close()
@@ -310,7 +314,7 @@ def delete_list(request: Request, list_id: int = Form(...)):
         log_event("shopping", f"Suppression liste id={list_id}")
         if not target:
             target = ensure_default_list(conn)
-        url = f"{ingress_base(request)}/shopping?list={target}&toast=deleted_list"
+        url = f"{ingress_base(request)}shopping?list={target}&toast=deleted_list"
         return RedirectResponse(url, status_code=303)
     finally:
         conn.close()
@@ -342,7 +346,7 @@ def add_item(
         )
         conn.commit()
         log_event("shopping", f"Ajout item produit_id={product_id} liste_id={list_id} qty={qty} {unit or ''}")
-        url = f"{ingress_base(request)}/shopping?list={list_id}&toast=added_item"
+        url = f"{ingress_base(request)}shopping?list={list_id}&toast=added_item"
         return RedirectResponse(url, status_code=303)
     finally:
         conn.close()
@@ -356,7 +360,7 @@ def toggle_item(request: Request, item_id: int = Form(...), list_id: int = Form(
         cur.execute("SELECT is_checked FROM shopping_items WHERE id=?", (item_id,))
         row = cur.fetchone()
         if not row:
-            url = f"{ingress_base(request)}/shopping?list={list_id}&toast=error"
+            url = f"{ingress_base(request)}shopping?list={list_id}&toast=error"
             return RedirectResponse(url, status_code=303)
         was_checked = int(row["is_checked"] or 0) == 1
         if was_checked:
@@ -380,7 +384,7 @@ def toggle_item(request: Request, item_id: int = Form(...), list_id: int = Form(
             )
         conn.commit()
         log_event("shopping", f"Toggle item id={item_id} → {0 if was_checked else 1}")
-        url = f"{ingress_base(request)}/shopping?list={list_id}&toast=toggled"
+        url = f"{ingress_base(request)}shopping?list={list_id}&toast=toggled"
         return RedirectResponse(url, status_code=303)
     finally:
         conn.close()
@@ -393,7 +397,7 @@ def delete_item(request: Request, item_id: int = Form(...), list_id: int = Form(
         cur.execute("DELETE FROM shopping_items WHERE id=?", (item_id,))
         conn.commit()
         log_event("shopping", f"Suppression item id={item_id}")
-        url = f"{ingress_base(request)}/shopping?list={list_id}&toast=deleted_item"
+        url = f"{ingress_base(request)}shopping?list={list_id}&toast=deleted_item"
         return RedirectResponse(url, status_code=303)
     finally:
         conn.close()
@@ -424,7 +428,7 @@ def mark_bought(
         )
         conn.commit()
         log_event("shopping", f"Achat item id={item_id} store='{store}' shelf={shelf_unit_price}")
-        url = f"{ingress_base(request)}/shopping?list={list_id}&toast=marked_bought"
+        url = f"{ingress_base(request)}shopping?list={list_id}&toast=marked_bought"
         return RedirectResponse(url, status_code=303)
     finally:
         conn.close()
@@ -455,7 +459,7 @@ def ticket_price(
         )
         conn.commit()
         log_event("shopping", f"Ticket item id={item_id} ticket={ticket_unit_price} delta={delta:+.2f}")
-        url = f"{ingress_base(request)}/shopping?list={list_id}&toast=ticket_ok"
+        url = f"{ingress_base(request)}shopping?list={list_id}&toast=ticket_ok"
         return RedirectResponse(url, status_code=303)
     finally:
         conn.close()
