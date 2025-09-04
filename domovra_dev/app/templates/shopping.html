@@ -344,7 +344,35 @@
 
 {% block scripts %}
 <script>
-  // Toggle panneaux "Acheter"
+  // -- 1) Normalisation des actions: évite //, préfixe BASE si absent, sécurise tous les formulaires
+  (function () {
+    const BASE = "{{ BASE }}"; // se termine déjà par "/"
+    function joinBase(path) {
+      // supprime un éventuel "/" initial du path
+      path = String(path || "").replace(/^\//, "");
+      // assemble et compacte les doubles slash (en évitant le schéma http(s)://)
+      let url = BASE + path;
+      url = url.replace(/([^:]\/)\/+/g, "$1");
+      return url;
+    }
+    document.querySelectorAll('form').forEach(form => {
+      let act = form.getAttribute('action') || "";
+      // si action vide ou relative, on tente de la recaler avec BASE
+      if (!/^https?:\/\//i.test(act)) {
+        // si elle contient un fragment connu "shopping/...", on l'extrait et on reconstruit
+        const m = act.match(/shopping\/[a-z_\/]+$/i);
+        if (m) act = m[0];
+        // si elle commence par "/shopping..." on enlève le "/" initial
+        act = act.replace(/^\/+/, "");
+        // si c'est un endpoint attendu, on recompose proprement
+        if (/^shopping(\/|$)/.test(act)) {
+          form.setAttribute('action', joinBase(act));
+        }
+      }
+    });
+  })();
+
+  // -- 2) Toggle panneaux "Acheter"
   document.querySelectorAll("[data-buy]").forEach(btn => {
     btn.addEventListener("click", () => {
       const row = document.querySelector(btn.getAttribute("data-buy"));
@@ -358,9 +386,9 @@
     });
   });
 
-  // Ajout: transformer "123 — Nom (unité)" -> product_id
+  // -- 3) Ajout: transformer "123 — Nom (unité)" -> product_id (sélecteur plus robuste)
   (function () {
-    const form = document.querySelector('form[action$="/shopping/item/add"]');
+    const form = document.querySelector('form[action*="shopping/item/add"]');
     if (!form) return;
     const disp = form.querySelector('input[name="product_id_display"]');
     const hid = form.querySelector('#product_id_hidden');
@@ -385,7 +413,7 @@
     });
   })();
 
-  // Toast via ?toast=
+  // -- 4) Toast via ?toast=
   (function () {
     const u = new URL(window.location);
     const t = u.searchParams.get("toast");
