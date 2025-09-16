@@ -4,6 +4,65 @@
 {% block content %}
 <div class="wrap" data-page="shopping">
 
+  {# --- Styles locaux pour corriger l’alignement de la ligne d’ajout --- #}
+  <style>
+    /* Ligne d'ajout : grille stable, évite les chevauchements */
+    .add-line {
+      display: grid;
+      grid-template-columns:
+        minmax(240px, 3fr)
+        /* Produit */
+        minmax(72px, 0.7fr)
+        /* Quantité */
+        minmax(180px, 1.2fr)
+        /* Unité */
+        minmax(220px, 2fr)
+        /* Note */
+        auto;
+      /* Bouton */
+      gap: 12px;
+      align-items: center;
+    }
+
+    .add-line>* {
+      min-width: 0;
+    }
+
+    .add-line .input,
+    .add-line select,
+    .add-line input[type="text"],
+    .add-line input[type="number"] {
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    /* Responsif */
+    @media (max-width:1024px) {
+      .add-line {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .add-line .span-2-md {
+        grid-column: span 2;
+      }
+
+      .add-line .btn-add {
+        grid-column: span 2;
+        justify-self: end;
+      }
+    }
+
+    @media (max-width:700px) {
+      .add-line {
+        grid-template-columns: 1fr;
+      }
+
+      .add-line .btn-add {
+        justify-self: stretch;
+      }
+    }
+  </style>
+
   <!-- Toolbar d’état -->
   <div class="shopping-toolbar" role="region" aria-label="Filtres liste d’achats">
     <div class="left" role="tablist" aria-label="État d’affichage">
@@ -28,14 +87,15 @@
       <strong id="h-list">🧾 Liste de courses</strong>
       <span class="muted">— sélectionnez ou créez une liste</span>
       <div class="right">
-        <button class="btn sm secondary" type="button" title="Ouvrir (maquette)">Ouvrir</button>
+        <!-- Devient un vrai submit du formulaire ci-dessous -->
+        <button class="btn sm secondary" type="submit" form="form-open-list" title="Ouvrir">Ouvrir</button>
         <button class="btn sm secondary" type="button" title="Générer (maquette)">Générer (ruptures + &lt; min)</button>
       </div>
     </header>
     <div class="abox-c">
       <div class="grid-2">
         <!-- Sélecteur de liste -->
-        <form class="inline" method="get" action="{{ BASE }}shopping">
+        <form id="form-open-list" class="inline" method="get" action="{{ BASE }}shopping">
           <label class="label sr-only" for="shopping-list">Liste</label>
           <input type="hidden" name="status" value="{{ STATUS }}">
           <select id="shopping-list" name="list" class="input">
@@ -65,12 +125,13 @@
       <strong id="h-add">➕ Ajouter un produit</strong>
     </header>
     <div class="abox-c">
-      <form method="post" action="{{ BASE }}shopping/item/add" class="grid add-grid grid-add"
+      <!-- ajout de .add-line (grille) -->
+      <form method="post" action="{{ BASE }}shopping/item/add" class="grid add-grid grid-add add-line"
         aria-label="Ajout rapide d’un produit">
         <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
 
         <!-- Produit -->
-        <div>
+        <div class="span-2-md">
           <label class="label sr-only" for="product-id-display">Produit</label>
           <input id="product-id-display" list="products" name="product_id_display" class="input" autocomplete="off"
             placeholder="— Ajouter un produit… —" required>
@@ -97,12 +158,12 @@
         </div>
 
         <!-- Note -->
-        <div>
+        <div class="span-2-md">
           <label class="label sr-only" for="note">Note</label>
           <input id="note" class="input" type="text" name="note" placeholder="Précision (marque, format…)">
         </div>
 
-        <div class="right">
+        <div class="right btn-add">
           <button class="btn ok">Ajouter</button>
         </div>
       </form>

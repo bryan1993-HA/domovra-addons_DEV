@@ -3172,3 +3172,62 @@ html[data-theme="light"] .wrap[data-page="shopping"] table.table tbody tr:hover 
         transition: none !important;
     }
 }
+
+/* === Shopping: ligne d'ajout === */
+.add-line {
+    display: grid;
+    grid-template-columns:
+        minmax(240px, 3fr)
+        /* Produit (datalist/select) */
+        minmax(72px, 0.7fr)
+        /* Quantité */
+        minmax(180px, 1.2fr)
+        /* Unité */
+        minmax(220px, 2fr)
+        /* Note / précision */
+        auto;
+    /* Bouton Ajouter */
+    gap: 12px;
+    align-items: center;
+}
+
+/* Empêche les champs de déborder en grid */
+.add-line>* {
+    min-width: 0;
+}
+
+/* Tous les champs prennent la largeur de leur cellule */
+.add-line .input,
+.add-line select,
+.add-line input[type="text"],
+.add-line input[type="number"],
+.add-line textarea {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/* Mobile/tablette: on évite tout chevauchement */
+@media (max-width: 1024px) {
+    .add-line {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .add-line .span-2 {
+        grid-column: span 2;
+    }
+
+    .add-line .btn-add {
+        grid-column: span 2;
+        justify-self: end;
+    }
+}
+
+@media (max-width: 700px) {
+    .add-line {
+        grid-template-columns: 1fr;
+    }
+
+    .add-line .btn-add {
+        justify-self: stretch;
+    }
+}
