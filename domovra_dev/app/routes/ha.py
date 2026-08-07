@@ -150,20 +150,21 @@ def ha_summary():
 
         # ---- LOW STOCK (produits sous leur seuil min) -----------------------
         try:
-            row = conn.execute(“””
-                WITH totals AS (
-                  SELECT product_id, COALESCE(SUM(qty),0) AS qty_total
-                  FROM stock_lots WHERE status='open'
-                  GROUP BY product_id
-                )
-                SELECT COUNT(*) AS c
-                FROM products p
-                LEFT JOIN totals t ON t.product_id = p.id
-                WHERE p.min_qty IS NOT NULL
-                  AND COALESCE(p.low_stock_enabled,1) != 0
-                  AND COALESCE(t.qty_total,0) <= p.min_qty
-            “””).fetchone()
-            low_stock_count = int(row[“c”] if row and row[“c”] is not None else 0)
+            _low_sql = (
+                “WITH totals AS (“
+                “ SELECT product_id, COALESCE(SUM(qty),0) AS qty_total”
+                “ FROM stock_lots WHERE status='open'”
+                “ GROUP BY product_id”
+                “)”
+                “ SELECT COUNT(*) AS c”
+                “ FROM products p”
+                “ LEFT JOIN totals t ON t.product_id = p.id”
+                “ WHERE p.min_qty IS NOT NULL”
+                “  AND COALESCE(p.low_stock_enabled,1) != 0”
+                “  AND COALESCE(t.qty_total,0) <= p.min_qty”
+            )
+            row = conn.execute(_low_sql).fetchone()
+            low_stock_count = int(row[0] if row and row[0] is not None else 0)
         except sqlite3.Error:
             low_stock_count = 0
 
