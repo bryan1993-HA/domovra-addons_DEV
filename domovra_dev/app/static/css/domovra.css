@@ -3354,57 +3354,67 @@ html[data-theme="light"] .sh-item:hover { background: rgba(0,0,0,.025); }
 
 /* ── Panneau Acheter (inline sous l'article) ─────────────────────────────── */
 .sh-buy-panel {
-    background: var(--bg-elevated, var(--bg-card));
-    border-top: 2px solid var(--line);
-    padding: 20px 18px;
+    background: var(--bg-card);
+    border-top: 3px solid var(--accent, #6366f1);
+    border-radius: 0 0 var(--sh-radius) var(--sh-radius);
+    padding: 0;
+}
+.sh-buy-panel form {
     display: grid;
     grid-template-columns: 1fr 1fr 1fr;
-    gap: 16px 20px;
-    border-radius: 0 0 var(--sh-radius) var(--sh-radius);
+    gap: 14px 18px;
+    padding: 20px 18px 16px;
 }
 .sh-buy-panel .sh-full { grid-column: 1 / -1; }
 .sh-buy-panel label {
     display: block;
-    font-size: .75rem;
-    font-weight: 500;
+    font-size: .7rem;
+    font-weight: 600;
     color: var(--text-muted);
-    margin-bottom: 6px;
-    letter-spacing: .02em;
+    margin-bottom: 5px;
+    letter-spacing: .06em;
     text-transform: uppercase;
+}
+.sh-buy-panel label small {
+    font-weight: 400;
+    opacity: .7;
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: .75em;
 }
 .sh-buy-panel input,
 .sh-buy-panel select {
     width: 100%;
     box-sizing: border-box;
-    min-height: 42px;
-    border: 1px solid var(--line);
-    border-radius: 9px;
-    background: var(--bg-card);
+    height: 40px;
+    border: 1.5px solid var(--line);
+    border-radius: 8px;
+    background: var(--bg-elevated, var(--bg-card));
     color: inherit;
-    padding: 8px 12px;
+    padding: 0 12px;
     font-size: .9rem;
-    transition: border-color .15s;
+    transition: border-color .15s, box-shadow .15s;
 }
 .sh-buy-panel input:focus,
 .sh-buy-panel select:focus {
     outline: none;
     border-color: var(--accent, #6366f1);
+    box-shadow: 0 0 0 3px rgba(99,102,241,.15);
 }
 .sh-buy-panel .sh-buy-actions {
     grid-column: 1 / -1;
     display: flex;
     gap: 10px;
     justify-content: flex-end;
-    padding-top: 4px;
+    padding-top: 14px;
     border-top: 1px solid var(--line);
-    margin-top: 4px;
 }
 @media (max-width: 700px) {
-    .sh-buy-panel { grid-template-columns: 1fr 1fr; padding: 16px 14px; gap: 12px 14px; }
+    .sh-buy-panel form { grid-template-columns: 1fr 1fr; padding: 16px 14px 14px; gap: 12px 14px; }
     .sh-buy-panel .sh-full { grid-column: 1 / -1; }
 }
 @media (max-width: 480px) {
-    .sh-buy-panel { grid-template-columns: 1fr; }
+    .sh-buy-panel form { grid-template-columns: 1fr; }
 }
 
 /* ── Dialog Envoyer en stock ─────────────────────────────────────────────── */
