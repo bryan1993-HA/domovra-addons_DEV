@@ -202,6 +202,7 @@
       <div class="session-store-bar">
         <label for="session-store">🏪 Magasin de cette session :</label>
         <input id="session-store" class="input" type="text" placeholder="Lidl, Carrefour…"
+          list="french-stores"
           title="Pré-remplit le champ Magasin pour chaque article. Modifiable par article.">
         <span class="muted" style="font-size:.8rem;">Optionnel — propagé à chaque panneau Acheter</span>
       </div>
@@ -304,6 +305,7 @@
                   <div>
                     <label class="label" for="d-store-{{ I.id }}">Magasin</label>
                     <input id="d-store-{{ I.id }}" class="input buy-store-input" name="store"
+                      list="french-stores"
                       value="{{ I.store or '' }}" placeholder="Lidl, Carrefour…">
                   </div>
 
@@ -434,6 +436,7 @@
               <div>
                 <label class="label" for="m-store-{{ I.id }}">Magasin</label>
                 <input id="m-store-{{ I.id }}" class="input buy-store-input" name="store"
+                  list="french-stores"
                   value="{{ I.store or '' }}" placeholder="Lidl, Carrefour…">
               </div>
 
@@ -565,6 +568,71 @@
   </div>
 </dialog>
 {% endblock %}
+
+<!-- Liste des enseignes françaises (datalist partagé) -->
+<datalist id="french-stores">
+  <!-- Hypermarchés -->
+  <option value="E.Leclerc">
+  <option value="Leclerc Drive">
+  <option value="Carrefour">
+  <option value="Carrefour Drive">
+  <option value="Auchan">
+  <option value="Auchan Drive">
+  <option value="Hyper U">
+  <option value="Géant Casino">
+  <option value="Cora">
+  <option value="Bi1">
+  <!-- Supermarchés -->
+  <option value="Carrefour Market">
+  <option value="Carrefour Express">
+  <option value="Carrefour City">
+  <option value="Carrefour Contact">
+  <option value="Intermarché">
+  <option value="Intermarché Express">
+  <option value="Intermarché Contact">
+  <option value="Intermarché Drive">
+  <option value="Super U">
+  <option value="U Express">
+  <option value="Utile">
+  <option value="Marché U">
+  <option value="U Drive">
+  <option value="Casino Supermarché">
+  <option value="Monoprix">
+  <option value="Monop'">
+  <option value="Franprix">
+  <option value="Auchan Supermarché">
+  <option value="Match">
+  <option value="Supeco">
+  <!-- Hard discount -->
+  <option value="Lidl">
+  <option value="Aldi">
+  <option value="Netto">
+  <option value="Leader Price">
+  <option value="Action">
+  <option value="Normal">
+  <option value="Penny Market">
+  <!-- Bio / Organic -->
+  <option value="Biocoop">
+  <option value="Naturalia">
+  <option value="La Vie Claire">
+  <option value="Bio c'Bon">
+  <option value="Satoriz">
+  <option value="Biomonde">
+  <option value="L'Eau Vive">
+  <!-- Spécialisés -->
+  <option value="Grand Frais">
+  <option value="Picard">
+  <option value="Thiriet">
+  <option value="Metro">
+  <option value="Costco">
+  <option value="Promocash">
+  <option value="Colruyt">
+  <!-- Marché / autres -->
+  <option value="Marché local">
+  <option value="Producteur local">
+  <option value="Amazon Fresh">
+  <option value="Chronodrive">
+</datalist>
 
 {% block scripts %}
 <script>
