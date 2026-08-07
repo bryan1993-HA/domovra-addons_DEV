@@ -3355,40 +3355,56 @@ html[data-theme="light"] .sh-item:hover { background: rgba(0,0,0,.025); }
 /* ── Panneau Acheter (inline sous l'article) ─────────────────────────────── */
 .sh-buy-panel {
     background: var(--bg-elevated, var(--bg-card));
-    border-top: 1px solid var(--line);
-    padding: 12px 14px;
+    border-top: 2px solid var(--line);
+    padding: 20px 18px;
     display: grid;
     grid-template-columns: 1fr 1fr 1fr;
-    gap: 10px;
+    gap: 16px 20px;
+    border-radius: 0 0 var(--sh-radius) var(--sh-radius);
 }
 .sh-buy-panel .sh-full { grid-column: 1 / -1; }
 .sh-buy-panel label {
     display: block;
     font-size: .75rem;
+    font-weight: 500;
     color: var(--text-muted);
-    margin-bottom: 4px;
+    margin-bottom: 6px;
+    letter-spacing: .02em;
+    text-transform: uppercase;
 }
 .sh-buy-panel input,
 .sh-buy-panel select {
     width: 100%;
     box-sizing: border-box;
-    min-height: 38px;
+    min-height: 42px;
     border: 1px solid var(--line);
-    border-radius: 8px;
-    background: transparent;
+    border-radius: 9px;
+    background: var(--bg-card);
     color: inherit;
-    padding: 4px 9px;
-    font-size: .875rem;
+    padding: 8px 12px;
+    font-size: .9rem;
+    transition: border-color .15s;
+}
+.sh-buy-panel input:focus,
+.sh-buy-panel select:focus {
+    outline: none;
+    border-color: var(--accent, #6366f1);
 }
 .sh-buy-panel .sh-buy-actions {
     grid-column: 1 / -1;
     display: flex;
-    gap: 8px;
+    gap: 10px;
     justify-content: flex-end;
+    padding-top: 4px;
+    border-top: 1px solid var(--line);
+    margin-top: 4px;
 }
-@media (max-width: 600px) {
-    .sh-buy-panel { grid-template-columns: 1fr 1fr; }
+@media (max-width: 700px) {
+    .sh-buy-panel { grid-template-columns: 1fr 1fr; padding: 16px 14px; gap: 12px 14px; }
     .sh-buy-panel .sh-full { grid-column: 1 / -1; }
+}
+@media (max-width: 480px) {
+    .sh-buy-panel { grid-template-columns: 1fr; }
 }
 
 /* ── Dialog Envoyer en stock ─────────────────────────────────────────────── */
