@@ -641,8 +641,8 @@
     </div>
 
     {% set urgents = lots
-    | selectattr(‘status’, ‘defined’)
-    | selectattr(‘status’, ‘in’, [‘red’, ‘yellow’])
+    | selectattr("status", "defined")
+    | selectattr("status", "in", ["red", "yellow"])
     | list %}
 
     <!-- Desktop -->
@@ -663,12 +663,12 @@
           <tr>
             <td>{{ it.product }}</td>
             <td class="muted">{{ it.location }}</td>
-            <td>{{ ‘%.2f’|format(it.qty)|trim(‘0’)|trim(‘.’) }} {{ it.unit|pluralize_fr(it.qty) }}</td>
-            <td>{{ it.best_before or ‘—‘ }}</td>
+            <td>{{ "%.2f"|format(it.qty)|trim("0")|trim(".") }} {{ it.unit|pluralize_fr(it.qty) }}</td>
+            <td>{{ it.best_before or "—" }}</td>
             <td>
-              {% if it.status == ‘red’ %}
+              {% if it.status == "red" %}
               <span class="pill danger">Urgent</span>
-              {% elif it.status == ‘yellow’ %}
+              {% elif it.status == "yellow" %}
               <span class="pill warn">Bientôt</span>
               {% endif %}
             </td>
@@ -692,12 +692,12 @@
           <div class="lot-title">{{ it.product }}</div>
           <div class="lot-meta">
             <span>📍 {{ it.location }}</span>
-            <span>⚖️ {{ ‘%.2f’|format(it.qty)|trim(‘0’)|trim(‘.’) }} {{ it.unit|pluralize_fr(it.qty) }}</span>
-            <span>🗓️ {{ it.best_before or ‘—‘ }}</span>
+            <span>⚖️ {{ "%.2f"|format(it.qty)|trim("0")|trim(".") }} {{ it.unit|pluralize_fr(it.qty) }}</span>
+            <span>🗓️ {{ it.best_before or "—" }}</span>
             <span>
-              {% if it.status == ‘red’ %}
+              {% if it.status == "red" %}
               <span class="pill danger">Urgent</span>
-              {% elif it.status == ‘yellow’ %}
+              {% elif it.status == "yellow" %}
               <span class="pill warn">Bientôt</span>
               {% endif %}
             </span>
