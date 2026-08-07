@@ -578,13 +578,13 @@
             <td>{{ p.name }}</td>
             <td>
               {% if q == 0 %}
-              0 {{ p.unit|pluralize_fr(0) if p.unit is defined else ‘’ }}
+              0 {{ p.unit|pluralize_fr(0) if p.unit is defined else "" }}
               {% else %}
-              {{ (‘%.2f’ % q) | trim(‘0’) | trim(‘.’) }} {{ p.unit|pluralize_fr(q) if p.unit is defined else ‘’ }}
+              {{ ("%.2f" % q) | trim("0") | trim(".") }} {{ p.unit|pluralize_fr(q) if p.unit is defined else "" }}
               {% endif %}
             </td>
-            <td>{{ (minq|int if minq == minq|int else ((‘%.2f’ % minq)|trim(‘0’)|trim(‘.’))) }}</td>
-            <td>{{ manque|int }} {{ p.unit|pluralize_fr(manque) if p.unit is defined else ‘’ }}</td>
+            <td>{{ (minq|int if minq == minq|int else (("%.2f" % minq)|trim("0")|trim("."))) }}</td>
+            <td>{{ manque|int }} {{ p.unit|pluralize_fr(manque) if p.unit is defined else "" }}</td>
             </tr>
             {% endif %}
             {% endfor %}
@@ -613,13 +613,13 @@
             <span>
               ⚖️
               {% if q == 0 %}
-              0 {{ p.unit|pluralize_fr(0) if p.unit is defined else ‘’ }}
+              0 {{ p.unit|pluralize_fr(0) if p.unit is defined else "" }}
               {% else %}
-              {{ (‘%.2f’ % q) | trim(‘0’) | trim(‘.’) }} {{ p.unit|pluralize_fr(q) if p.unit is defined else ‘’ }}
+              {{ ("%.2f" % q) | trim("0") | trim(".") }} {{ p.unit|pluralize_fr(q) if p.unit is defined else "" }}
               {% endif %}
             </span>
-            <span>🎯 Seuil : {{ (minq|int if minq == minq|int else ((‘%.2f’ % minq)|trim(‘0’)|trim(‘.’))) }}</span>
-            <span>⛽ Manque : {{ manque|int }} {{ p.unit|pluralize_fr(manque) if p.unit is defined else ‘’ }}</span>
+            <span>🎯 Seuil : {{ (minq|int if minq == minq|int else (("%.2f" % minq)|trim("0")|trim("."))) }}</span>
+            <span>⛽ Manque : {{ manque|int }} {{ p.unit|pluralize_fr(manque) if p.unit is defined else "" }}</span>
           </div>
         </div>
     </div><!-- /.lot-card -->
