@@ -1,0 +1,143 @@
+<h2>Données — Export &amp; Import CSV</h2>
+<p class="muted">Exportez ou importez vos produits et lots au format CSV.</p>
+
+<!-- ─── EXPORT ─────────────────────────────────────────────────────────── -->
+<section style="margin-top:1.25rem">
+    <h3 style="margin-bottom:.5rem">Exporter</h3>
+    <div class="field-row" style="gap:.75rem;flex-wrap:wrap">
+        <a class="btn secondary" href="{{ BASE }}data/export/products.csv" download>
+            Produits (CSV)
+        </a>
+        <a class="btn secondary" href="{{ BASE }}data/export/lots.csv" download>
+            Lots en stock (CSV)
+        </a>
+    </div>
+    <p class="muted" style="margin-top:.5rem;font-size:.85em">
+        Les fichiers sont encodés en UTF-8 (avec BOM) pour une compatibilité maximale avec Excel.
+    </p>
+</section>
+
+<!-- ─── IMPORT PRODUITS ───────────────────────────────────────────────── -->
+<section style="margin-top:2rem;border-top:1px solid var(--line);padding-top:1.25rem">
+    <h3 style="margin-bottom:.25rem">Importer des produits</h3>
+    <p class="muted" style="font-size:.85em;margin-bottom:.75rem">
+        Colonnes reconnues : <code>name</code>, <code>unit</code>, <code>barcode</code>,
+        <code>min_qty</code>, <code>default_shelf_life_days</code>,
+        <code>default_freeze_shelf_days</code>, <code>category</code>,
+        <code>description</code>, <code>no_expiry</code>, <code>no_freeze</code>.
+        La colonne <code>name</code> est obligatoire.
+    </p>
+    <form id="form-import-products" style="display:flex;flex-direction:column;gap:.75rem;max-width:480px">
+        <div class="field">
+            <label class="label">Fichier CSV</label>
+            <input type="file" name="file" accept=".csv,text/csv" required>
+        </div>
+        <div class="field">
+            <label class="label">En cas de doublon (même nom ou même code-barres)</label>
+            <div style="display:flex;gap:1rem;flex-wrap:wrap">
+                <label class="checkbox-inline">
+                    <input type="radio" name="on_conflict" value="skip" checked>
+                    <span>Ignorer</span>
+                </label>
+                <label class="checkbox-inline">
+                    <input type="radio" name="on_conflict" value="update">
+                    <span>Mettre à jour</span>
+                </label>
+            </div>
+        </div>
+        <button type="submit" class="btn secondary" style="width:fit-content">
+            Importer les produits
+        </button>
+    </form>
+    <div id="result-import-products" style="display:none;margin-top:.75rem"></div>
+</section>
+
+<!-- ─── IMPORT LOTS ───────────────────────────────────────────────────── -->
+<section style="margin-top:2rem;border-top:1px solid var(--line);padding-top:1.25rem">
+    <h3 style="margin-bottom:.25rem">Importer des lots</h3>
+    <p class="muted" style="font-size:.85em;margin-bottom:.75rem">
+        Colonnes reconnues : <code>product_name</code> (ou <code>product</code>),
+        <code>product_barcode</code>, <code>location</code>, <code>qty</code>,
+        <code>best_before</code>, <code>frozen_on</code>.
+        Les colonnes <code>product_name</code>, <code>location</code> et <code>qty</code>
+        sont obligatoires. Les emplacements inexistants sont créés automatiquement.
+    </p>
+    <form id="form-import-lots" style="display:flex;flex-direction:column;gap:.75rem;max-width:480px">
+        <div class="field">
+            <label class="label">Fichier CSV</label>
+            <input type="file" name="file" accept=".csv,text/csv" required>
+        </div>
+        <button type="submit" class="btn secondary" style="width:fit-content">
+            Importer les lots
+        </button>
+    </form>
+    <div id="result-import-lots" style="display:none;margin-top:.75rem"></div>
+</section>
+
+<script>
+(function () {
+    const BASE = "{{ BASE }}";
+
+    function showResult(containerId, data) {
+        const el = document.getElementById(containerId);
+        if (!el) return;
+        el.style.display = "block";
+
+        if (!data.ok) {
+            el.innerHTML = '<div class="chip chip-danger" style="padding:.5rem .75rem">' +
+                escHtml(data.error || "Erreur inconnue") + "</div>";
+            return;
+        }
+
+        let html = "<ul style='margin:.25rem 0 0 1rem;line-height:1.7'>";
+        html += "<li><strong>" + data.imported + "</strong> ligne(s) importée(s)</li>";
+        if (data.updated) html += "<li><strong>" + data.updated + "</strong> mise(s) à jour</li>";
+        if (data.skipped) html += "<li><strong>" + data.skipped + "</strong> ignorée(s) (doublon)</li>";
+        if (data.errors && data.errors.length) {
+            html += "<li style='color:var(--danger)'><strong>" + data.errors.length +
+                " erreur(s) :</strong><ul style='margin:.25rem 0 0 1rem'>";
+            data.errors.forEach(function (e) {
+                html += "<li>" + escHtml(e) + "</li>";
+            });
+            html += "</ul></li>";
+        }
+        html += "</ul>";
+        const cls = data.errors && data.errors.length ? "chip-warn" : "chip-ok";
+        el.innerHTML = '<div class="chip ' + cls + '" style="padding:.5rem .75rem">' + html + "</div>";
+    }
+
+    function escHtml(s) {
+        return String(s)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;");
+    }
+
+    function wireForm(formId, endpoint, resultId) {
+        const form = document.getElementById(formId);
+        if (!form) return;
+        form.addEventListener("submit", async function (e) {
+            e.preventDefault();
+            const btn = form.querySelector("[type=submit]");
+            if (btn) { btn.disabled = true; btn.textContent = "Import en cours…"; }
+            const res = document.getElementById(resultId);
+            if (res) res.style.display = "none";
+            try {
+                const fd = new FormData(form);
+                const resp = await fetch(BASE + endpoint, { method: "POST", body: fd });
+                const data = await resp.json();
+                showResult(resultId, data);
+            } catch (err) {
+                showResult(resultId, { ok: false, error: "Erreur réseau : " + err });
+            } finally {
+                if (btn) { btn.disabled = false; btn.textContent = btn.dataset.label || "Importer"; }
+            }
+        });
+        const btn = form.querySelector("[type=submit]");
+        if (btn) btn.dataset.label = btn.textContent;
+    }
+
+    wireForm("form-import-products", "data/import/products", "result-import-products");
+    wireForm("form-import-lots", "data/import/lots", "result-import-lots");
+})();
+</script>

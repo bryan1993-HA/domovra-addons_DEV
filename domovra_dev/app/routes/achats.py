@@ -11,6 +11,7 @@ from urllib.parse import urlencode
 from config import DB_PATH
 from utils.http import ingress_base, render as render_with_env
 from services.events import log_event
+from services.ha_entities import schedule_ha_push
 from db import (
     list_products, list_locations,
     add_lot, list_lots, update_lot
@@ -244,6 +245,8 @@ def achats_add_action(
         "store": (store or None), "note": (note or None),
         "best_before": best_before or None, "frozen_on": frozen_on or None,
     })
+
+    schedule_ha_push()
 
     # Redirect UI
     base = ingress_base(request)

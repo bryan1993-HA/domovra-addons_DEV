@@ -124,6 +124,7 @@ def ha_summary():
 
     products_count = 0
     lots_count = 0
+    low_stock_count = 0
     urgent_count = 0
     soon_count = 0
 
@@ -146,6 +147,25 @@ def ha_summary():
                 products_count = int(row["c"] if row and row["c"] is not None else 0)
             except sqlite3.Error:
                 products_count = 0
+
+        # ---- LOW STOCK (produits sous leur seuil min) -----------------------
+        try:
+            row = conn.execute(“””
+                WITH totals AS (
+                  SELECT product_id, COALESCE(SUM(qty),0) AS qty_total
+                  FROM stock_lots WHERE status='open'
+                  GROUP BY product_id
+                )
+                SELECT COUNT(*) AS c
+                FROM products p
+                LEFT JOIN totals t ON t.product_id = p.id
+                WHERE p.min_qty IS NOT NULL
+                  AND COALESCE(p.low_stock_enabled,1) != 0
+                  AND COALESCE(t.qty_total,0) <= p.min_qty
+            “””).fetchone()
+            low_stock_count = int(row[“c”] if row and row[“c”] is not None else 0)
+        except sqlite3.Error:
+            low_stock_count = 0
 
         # ---- LOTS (table + filtres “actifs”) ---------------------------------
         lots_table = None
@@ -215,6 +235,7 @@ def ha_summary():
     return {
         "products": products_count,
         "lots": lots_count,
+        "low_stock": low_stock_count,
         "soon": soon_count,
         "urgent": urgent_count,
         "thresholds": {"warn_days": warn_days, "crit_days": crit_days},

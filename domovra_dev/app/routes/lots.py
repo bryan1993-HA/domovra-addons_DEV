@@ -4,6 +4,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 
 from utils.http import ingress_base, render as render_with_env
 from services.events import log_event
+from services.ha_entities import schedule_ha_push
 from config import get_retention_thresholds
 from db import (
     list_lots, list_locations, list_products,
@@ -61,6 +62,7 @@ def lot_add_action(request: Request,
         "product_id": product_id, "location_id": location_id, "qty": float(qty),
         "frozen_on": frozen_on or None, "best_before": best_before or None
     })
+    schedule_ha_push()
     return RedirectResponse(ingress_base(request) + "lots?added=1",
                             status_code=303, headers={"Cache-Control": "no-store"})
 
@@ -81,6 +83,7 @@ def lot_update_action(request: Request,
         "lot_id": lot_id, "qty": q, "location_id": int(location_id),
         "frozen_on": frozen_on or None, "best_before": best_before or None
     })
+    schedule_ha_push()
     return RedirectResponse(ingress_base(request) + "lots?updated=1",
                             status_code=303, headers={"Cache-Control": "no-store"})
 
@@ -90,6 +93,7 @@ def lot_consume_action(request: Request, lot_id: int = Form(...), qty: float = F
     q = float(qty)
     consume_lot(lot_id, q)
     log_event("lot.consume", {"lot_id": lot_id, "qty": q})
+    schedule_ha_push()
     return RedirectResponse(ingress_base(request) + "lots",
                             status_code=303, headers={"Cache-Control":"no-store"})
 
@@ -111,6 +115,7 @@ def lot_delete_action(request: Request, lot_id: int = Form(...)):
     except Exception:
         pass
 
+    schedule_ha_push()
     return RedirectResponse(base + "lots?deleted=1", status_code=303, headers={"Cache-Control": "no-store"})
 
 

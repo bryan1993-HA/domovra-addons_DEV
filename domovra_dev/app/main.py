@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from logging.handlers import RotatingFileHandler
@@ -35,6 +36,7 @@ from routes.debug import router as debug_router
 from routes.admin_db import router as admin_db_router
 from routes.shopping import router as shopping_router
 from routes.ha import router as ha_router
+from routes.export_import import router as export_import_router
 
 
 # DB (uniquement ce dont on a besoin ici)
@@ -155,14 +157,26 @@ app.include_router(api_router)
 app.include_router(debug_router)
 app.include_router(admin_db_router)
 app.include_router(ha_router)
+app.include_router(export_import_router)
 
 
 # ============================================================
 # Lifecycle
 # ============================================================
 
+async def _ha_push_loop() -> None:
+    """Push HA sensors every 5 minutes in the background."""
+    from services.ha_entities import refresh_and_push
+    while True:
+        await asyncio.sleep(300)
+        try:
+            refresh_and_push()
+        except Exception as e:
+            logger.debug("HA push loop: %s", e)
+
+
 @app.on_event("startup")
-def _startup() -> None:
+async def _startup() -> None:
     logger.info("Domovra starting. DB_PATH=%s", DB_PATH)
 
     # Seuils dynamiques (issus de /data/settings.json avec fallback env/valeurs sûres)
@@ -181,3 +195,8 @@ def _startup() -> None:
         logger.info("Settings au démarrage: %s", current)
     except Exception as e:  # pragma: no cover
         logger.exception("Erreur lecture settings au démarrage: %s", e)
+
+    # HA sensors : push initial + boucle périodique toutes les 5 min
+    asyncio.create_task(_ha_push_loop())
+    from services.ha_entities import schedule_ha_push
+    schedule_ha_push()

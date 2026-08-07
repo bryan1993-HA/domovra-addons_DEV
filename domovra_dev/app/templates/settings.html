@@ -13,6 +13,7 @@
             <button type="button" class="tab" data-tab="toasts">Notifications</button>
             <button type="button" class="tab" data-tab="locations">Emplacements</button>
             <button type="button" class="tab" data-tab="admindb">Admin DB</button>
+            <button type="button" class="tab" data-tab="donnees">Données</button>
             <button type="button" class="tab" data-tab="advanced">Avancés</button>
             <button type="button" class="tab" data-tab="journal">Journal</button>
             <button type="button" class="tab" data-tab="about">À propos</button>
@@ -26,6 +27,7 @@
                 <option value="toasts">Notifications</option>
                 <option value="locations">Emplacements</option>
                 <option value="admindb">Admin DB</option>
+                <option value="donnees">Données</option>
                 <option value="advanced">Avancés</option>
                 <option value="journal">Journal</option>
                 <option value="about">À propos</option>
@@ -64,6 +66,9 @@
     </form>
 
     {# ======= PANELS HORS FORM ======= #}
+    <section class="panel card" data-panel="donnees" hidden>
+        {% include "tools/_export_import.html" %}
+    </section>
     <section class="panel card" data-panel="locations" hidden>
         {% include "tools/_locations_full.html" %}
     </section>
