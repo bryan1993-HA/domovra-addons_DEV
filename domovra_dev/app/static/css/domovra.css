@@ -56,13 +56,13 @@
 
 /* Thèmes (valeurs pilotées par html[data-theme]) */
 html[data-theme="dark"] {
-    --bg-body: #0b0e14;
-    --bg-card: #111827;
-    --bg-elevated: #1a2235;
+    --bg-body: #080b11;
+    --bg-card: #0f1420;
+    --bg-elevated: #161d2e;
     --panel: #131c2e;
-    --line: #1f2937;
+    --line: #1e2535;
     --text-muted: #94a3b8;
-    --hover: rgba(255,255,255,0.05);
+    --hover: rgba(255,255,255,0.06);
     --fg: #f1f5f9;
 }
 
@@ -174,16 +174,20 @@ header {
 
 /* Harmonisée sur les variables de thème */
 .chip {
-    background: var(--bg-card);
+    background: var(--bg-elevated, var(--bg-card));
     border: 1px solid var(--line);
     border-radius: 999px;
-    padding: 6px 10px;
+    padding: 5px 11px;
     white-space: nowrap;
-    color: inherit;
+    color: var(--text-muted);
+    font-size: .8125rem;
+    font-weight: 500;
+    transition: border-color .15s;
 }
 
 .chip b {
     font-weight: 700;
+    color: var(--fg);
 }
 
 .menu {
@@ -223,10 +227,17 @@ header {
 }
 
 .menu a.active {
-    background: rgba(99,102,241,.12);
-    border-color: rgba(99,102,241,.35);
-    color: var(--accent-hover, #818cf8);
+    background: rgba(99,102,241,.18);
+    border-color: rgba(99,102,241,.5);
+    color: #a5b4fc;
     font-weight: 600;
+    box-shadow: 0 0 0 1px rgba(99,102,241,.2) inset;
+}
+
+html[data-theme="light"] .menu a.active {
+    background: rgba(99,102,241,.1);
+    border-color: rgba(99,102,241,.4);
+    color: #4f46e5;
 }
 
 .menu .ico {
@@ -3339,29 +3350,33 @@ html[data-theme="light"] .wrap[data-page="shopping"] table.table tbody tr:hover 
 
 /* Conteneur page accueil */
 .wrap[data-page="home"] {
-    max-width: 980px;
+    max-width: 900px;
     margin: 0 auto;
     padding: 20px 16px;
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 10px;
 }
 
-/* Cards avec bande colorée sur le côté */
+/* Cards */
 .wrap[data-page="home"] .card {
     border: 1px solid var(--line);
-    border-radius: var(--radius-lg, 16px);
+    border-radius: 14px;
     background: var(--bg-card);
     padding: 0;
     overflow: hidden;
-    box-shadow: 0 1px 3px rgba(0,0,0,.12), 0 4px 12px rgba(0,0,0,.08);
-    transition: box-shadow .2s;
+    box-shadow: 0 2px 8px rgba(0,0,0,.35), 0 1px 2px rgba(0,0,0,.2);
+    transition: box-shadow .2s, border-color .2s;
 }
 .wrap[data-page="home"] .card:hover {
-    box-shadow: 0 2px 6px rgba(0,0,0,.15), 0 8px 20px rgba(0,0,0,.1);
+    border-color: rgba(99,102,241,.25);
+    box-shadow: 0 4px 16px rgba(0,0,0,.4), 0 1px 3px rgba(0,0,0,.25);
 }
 html[data-theme="light"] .wrap[data-page="home"] .card {
-    box-shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 12px rgba(0,0,0,.04);
+    box-shadow: 0 1px 4px rgba(0,0,0,.08), 0 4px 14px rgba(0,0,0,.05);
+}
+html[data-theme="light"] .wrap[data-page="home"] .card:hover {
+    box-shadow: 0 2px 8px rgba(0,0,0,.1), 0 6px 20px rgba(0,0,0,.07);
 }
 
 /* En-tête de card */
