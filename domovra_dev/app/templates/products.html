@@ -187,6 +187,9 @@ Astuce : tu peux combiner (ex. « ddm produits laitiers »)."></span>
 
     <div class="row tools-row" style="align-items:center">
       <input id="q" type="search" placeholder="Rechercher une fiche produit…" />
+      <button type="button" class="btn ghost" id="btn-hide-zero-prod" title="Masquer les produits dont le stock est à 0">
+        Masquer stock à 0
+      </button>
     </div>
   </div>
 
@@ -667,17 +670,31 @@ Astuce : tu peux combiner (ex. « ddm produits laitiers »)."></span>
     return true;
   }
 
+  const HIDE_ZERO_PROD_KEY = 'domovra_hide_zero_products';
+  let hideZeroProd = localStorage.getItem(HIDE_ZERO_PROD_KEY) === '1';
+
+  function syncHideZeroProdBtn() {
+    const btn = document.getElementById('btn-hide-zero-prod');
+    if (!btn) return;
+    btn.classList.toggle('active', hideZeroProd);
+    btn.textContent = hideZeroProd ? 'Afficher stock à 0' : 'Masquer stock à 0';
+  }
+
   let searchTimer = null;
   function runSmartSearch(qs) {
     const query = parseQuery(qs);
     let shown = 0;
     cards.forEach(card => {
-      const ok = cardMatches(card, query);
+      let ok = cardMatches(card, query);
+      if (ok && hideZeroProd) {
+        const qty = parseFloat(card.dataset.qty || '0');
+        if (qty <= 0) ok = false;
+      }
       card.style.display = ok ? '' : 'none';
       if (ok) shown++;
     });
     const chip = document.querySelector('[data-page="product"] .chip b');
-    if (chip) chip.textContent = String(qs ? shown : cards.length);
+    if (chip) chip.textContent = String((qs || hideZeroProd) ? shown : cards.length);
   }
 
   if (q) {
@@ -687,6 +704,16 @@ Astuce : tu peux combiner (ex. « ddm produits laitiers »)."></span>
       searchTimer = setTimeout(() => runSmartSearch(e.target.value), 120);
     });
   }
+
+  document.getElementById('btn-hide-zero-prod')?.addEventListener('click', () => {
+    hideZeroProd = !hideZeroProd;
+    localStorage.setItem(HIDE_ZERO_PROD_KEY, hideZeroProd ? '1' : '0');
+    syncHideZeroProdBtn();
+    runSmartSearch(q?.value || '');
+  });
+
+  syncHideZeroProdBtn();
+  if (hideZeroProd) runSmartSearch(q?.value || '');
 
   /* ====== Helpers communs ====== */
   const $ = s => document.querySelector(s);
