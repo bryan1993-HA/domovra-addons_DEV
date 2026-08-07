@@ -158,26 +158,6 @@ app.include_router(ha_router)
 
 
 # ============================================================
-# Endpoint pour Home Assistant (résumé entités)
-# ============================================================
-
-from fastapi import APIRouter  # ⇐ ajout
-
-ha_router = APIRouter(prefix="/api/ha", tags=["home-assistant"])
-
-@ha_router.get("/summary")
-def ha_summary():
-    # TODO: remplacer par des vraies valeurs (SQL) quand tu veux
-    return {
-        "products_count": 132,
-        "lots_count": 289,
-        "soon_count": 8,
-        "urgent_count": 3,
-    }
-
-app.include_router(ha_router)
-
-# ============================================================
 # Lifecycle
 # ============================================================
 

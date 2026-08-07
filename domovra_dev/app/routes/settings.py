@@ -148,14 +148,14 @@ def _read_addon_config() -> dict:
     return {}
 
 def _counts_summary(db_path: str) -> dict:
-    out = {"products": 0, "locations": 0, "lots": 0, "journal": 0}
+    out = {"products": 0, "locations": 0, "lots": 0, "events": 0}
     try:
         with sqlite3.connect(db_path) as c:
             c.row_factory = sqlite3.Row
             for table, key in (("products", "products"),
                                ("locations", "locations"),
-                               ("lots", "lots"),
-                               ("journal", "journal")):
+                               ("stock_lots", "lots"),
+                               ("events", "events")):
                 try:
                     row = c.execute(f"SELECT COUNT(*) AS c FROM {table}").fetchone()
                     out[key] = int(row["c"] or 0)

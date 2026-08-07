@@ -755,11 +755,12 @@ def update_lot(lot_id: int, qty: float, location_id: int, frozen_on: str | None,
         )
         c.commit()
 
-def delete_lot(lot_id: int):
+def delete_lot(lot_id: int) -> int:
     with _conn() as c:
         c.execute("DELETE FROM movements WHERE lot_id=?", (lot_id,))
-        c.execute("DELETE FROM stock_lots WHERE id=?", (lot_id,))
+        cur = c.execute("DELETE FROM stock_lots WHERE id=?", (lot_id,))
         c.commit()
+        return cur.rowcount
 
 # ---------- Helpers
 def status_for(best_before: str | None, warn_days: int, crit_days: int):

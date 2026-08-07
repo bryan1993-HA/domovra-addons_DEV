@@ -253,8 +253,8 @@ def api_consume_lot(
 def _try_log_event(kind: str, payload: Dict[str, Any]) -> None:
     """Envoie dans un service d'événements si présent (ne plante jamais)."""
     try:
-        from services.events import add_event  # optionnel selon ton projet
-        add_event(kind, payload)
+        from services.events import log_event
+        log_event(kind, payload)
     except Exception:
         pass
 

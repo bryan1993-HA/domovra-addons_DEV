@@ -21,15 +21,7 @@ cd "$APP_DIR"
 
 # ✅ Exporte la version depuis config.json si dispo (fallback ENV)
 if [ -z "${DOMOVRA_VERSION:-}" ] && [ -f "$APP_DIR/config.json" ]; then
-  DOMOVRA_VERSION="$(python3 - <<'PY' "$APP_DIR/config.json" 2>/dev/null || true)
-import json, sys
-try:
-    with open(sys.argv[1], 'r', encoding='utf-8') as f:
-        print(json.load(f).get('version',''))
-except Exception:
-    pass
-PY
-"
+  DOMOVRA_VERSION="$(python3 -c "import json; print(json.load(open('$APP_DIR/config.json')).get('version',''))" 2>/dev/null || true)"
   export DOMOVRA_VERSION
   echo "[Domovra] Version détectée: ${DOMOVRA_VERSION:-n/a}"
 else
