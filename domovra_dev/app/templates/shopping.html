@@ -89,7 +89,11 @@
       <div class="right">
         <!-- Devient un vrai submit du formulaire ci-dessous -->
         <button class="btn sm secondary" type="submit" form="form-open-list" title="Ouvrir">Ouvrir</button>
-        <button class="btn sm secondary" type="button" title="Générer (maquette)">Générer (ruptures + &lt; min)</button>
+        <form id="form-generate" method="post" action="{{ BASE }}shopping/list/generate" style="display:inline"
+          onsubmit="return confirm('Ajouter les produits en rupture ou sous le seuil minimum ?');">
+          <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
+          <button class="btn sm secondary" type="submit" title="Ajouter les produits en rupture ou sous le seuil">Générer (ruptures + &lt; min)</button>
+        </form>
       </div>
     </header>
     <div class="abox-c">
@@ -181,9 +185,13 @@
       <strong id="h-items">🗒️ Articles</strong>
       <span class="muted">— {{ ITEMS|length or 0 }} élément{{ (ITEMS|length or 0) > 1 and 's' or '' }}</span>
       <div class="right">
-        <button class="btn sm secondary" type="button" title="Export CSV (à venir)">🗂️ Export CSV</button>
+        <button class="btn sm secondary" type="button" id="btn-export-csv" title="Exporter la liste en CSV">🗂️ Export CSV</button>
         <button class="btn sm secondary" type="button" onclick="window.print()">🖨️ Imprimer</button>
-        <button class="btn sm warn" type="button" title="Supprimer les cochés (à venir)">🧹 Nettoyer (cochés)</button>
+        <form method="post" action="{{ BASE }}shopping/item/delete_checked" style="display:inline"
+          onsubmit="return confirm('Supprimer tous les articles cochés ?');">
+          <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
+          <button class="btn sm warn" type="submit">🧹 Nettoyer (cochés)</button>
+        </form>
       </div>
     </header>
 
@@ -487,6 +495,31 @@
     });
   })();
 
+  // Export CSV
+  (function () {
+    document.getElementById('btn-export-csv')?.addEventListener('click', function () {
+      const rows = [];
+      rows.push(['Produit', 'Quantité', 'Unité', 'Note', 'Magasin', 'Prix rayon', 'Prix ticket', 'Coché']);
+      document.querySelectorAll('.table tbody tr:not(.buy-row)').forEach(tr => {
+        const tds = tr.querySelectorAll('td');
+        if (tds.length < 3) return;
+        const product = tds[0].querySelector('strong')?.textContent?.trim() || '';
+        const qtyCell = tds[1]?.textContent?.trim() || '';
+        const note = tds[2]?.textContent?.trim() || '';
+        const isChecked = tr.classList.contains('checked') ? 'oui' : 'non';
+        rows.push([product, qtyCell, '', note, '', '', '', isChecked]);
+      });
+      const csv = rows.map(r => r.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(',')).join('\n');
+      const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'liste-courses.csv';
+      a.click();
+      URL.revokeObjectURL(a.href);
+      window.showToast?.('Export CSV téléchargé.', 'ok');
+    });
+  })();
+
   // Toast via ?toast=
   (function () {
     const u = new URL(window.location);
@@ -501,6 +534,8 @@
       ticket_ok: ["Prix ticket enregistré.", "ok"],
       toggled: ["Statut mis à jour.", "ok"],
       deleted_item: ["Item supprimé.", "warn"],
+      generated: ["Liste mise à jour avec les produits en rupture.", "ok"],
+      cleaned: ["Articles cochés supprimés.", "warn"],
       error: ["Une erreur est survenue.", "error"]
     };
     const p = map[t]; if (p && window.showToast) window.showToast(p[0], p[1]);

@@ -433,6 +433,67 @@ def mark_bought(
     finally:
         conn.close()
 
+@router.post("/shopping/list/generate")
+def generate_list(request: Request, list_id: int = Form(...)):
+    """Ajoute les produits en rupture ou sous le seuil min_qty à la liste."""
+    conn = get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT p.id, p.name, p.unit, p.min_qty,
+                   COALESCE(SUM(sl.qty), 0) AS current_qty
+            FROM products p
+            LEFT JOIN stock_lots sl ON sl.product_id = p.id
+            WHERE p.low_stock_enabled = 1
+              AND p.min_qty IS NOT NULL
+              AND p.min_qty > 0
+            GROUP BY p.id
+            HAVING current_qty < p.min_qty
+        """)
+        low_stock = cur.fetchall()
+        added = 0
+        now = datetime.utcnow().isoformat()
+        for p in low_stock:
+            cur.execute(
+                "SELECT id FROM shopping_items WHERE list_id=? AND product_id=? AND is_checked=0",
+                (list_id, p["id"]),
+            )
+            if cur.fetchone():
+                continue
+            pos = next_position(conn, list_id)
+            needed = round(float(p["min_qty"]) - float(p["current_qty"]), 3)
+            cur.execute(
+                """INSERT INTO shopping_items
+                   (list_id, product_id, qty, unit, note, is_checked, position, created_at)
+                   VALUES (?,?,?,?,?,0,?,?)""",
+                (list_id, p["id"], needed, p["unit"], "Auto", pos, now),
+            )
+            added += 1
+        conn.commit()
+        log_event("shopping_generated", {"list_id": list_id, "added": added})
+    finally:
+        conn.close()
+    base = ingress_base(request)
+    return RedirectResponse(f"{base}shopping?list={list_id}&toast=generated", status_code=303)
+
+
+@router.post("/shopping/item/delete_checked")
+def delete_checked(request: Request, list_id: int = Form(...)):
+    """Supprime tous les articles cochés d'une liste."""
+    conn = get_db()
+    try:
+        conn.execute(
+            "DELETE FROM shopping_items WHERE list_id=? AND is_checked=1",
+            (list_id,),
+        )
+        conn.commit()
+        log_event("shopping_cleaned", {"list_id": list_id})
+    finally:
+        conn.close()
+    base = ingress_base(request)
+    return RedirectResponse(f"{base}shopping?list={list_id}&toast=cleaned", status_code=303)
+
+
 @router.post("/shopping/item/ticket_price")
 def ticket_price(
     request: Request,

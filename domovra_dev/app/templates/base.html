@@ -14,29 +14,9 @@
   <!-- Override des couleurs de toasts depuis les paramètres -->
   <style>
     :root {
-      --toast-ok: {
-          {
-          SETTINGS.toast_ok|default('#4caf50')
-        }
-      }
-
-      ;
-
-      --toast-warn: {
-          {
-          SETTINGS.toast_warn|default('#ffb300')
-        }
-      }
-
-      ;
-
-      --toast-error: {
-          {
-          SETTINGS.toast_error|default('#ef5350')
-        }
-      }
-
-      ;
+      --toast-ok: {{ SETTINGS.toast_ok|default('#4caf50') }};
+      --toast-warn: {{ SETTINGS.toast_warn|default('#ffb300') }};
+      --toast-error: {{ SETTINGS.toast_error|default('#ef5350') }};
     }
   </style>
 

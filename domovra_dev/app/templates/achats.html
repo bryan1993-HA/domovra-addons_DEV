@@ -722,7 +722,7 @@
                     const totalL = (mu === 'L') ? totalQty : (totalQty / 1000);
                     if (totalL > 0) { perBaseTxt = `Prix / L : ${(pt / totalL).toFixed(2)} €`; baseTxt = `≈ ${totalL.toFixed(3)} L`; }
                 } else if (mu === 'pièce') {
-                    if (m > 0) perBaseTxt = `Prix / pièce : ${(pt / m).toFixed(2)} €`;
+                    if (totalQty > 0) perBaseTxt = `Prix / pièce : ${(pt / totalQty).toFixed(2)} €`;
                 }
             }
 

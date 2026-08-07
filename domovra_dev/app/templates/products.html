@@ -748,7 +748,7 @@ Astuce : tu peux combiner (ex. « ddm produits laitiers »)."></span>
         date: new Date(r.date),            // ex. "2025-08-20"
         price: Number(r.price)
       }))
-      .filter(d => !isNaN(d.date) && !isNaN(d.price))
+      .filter(d => !isNaN(d.date.getTime()) && !isNaN(d.price))
       .sort((a, b) => a.date - b.date);
 
     if (data.length < 2) {
