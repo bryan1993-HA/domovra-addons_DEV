@@ -6,12 +6,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Domovra{% endblock %}</title>
 
-  <!-- Source de vérité côté UI -->
   <meta name="domovra:theme" content="{{ SETTINGS.theme|default('auto') }}">
   <meta name="domovra:sidebar" content="{{ '1' if SETTINGS.sidebar_compact else '0' }}">
   <meta name="domovra:toastDuration" content="{{ SETTINGS.toast_duration|default(3000) }}">
 
-  <!-- Override des couleurs de toasts depuis les paramètres -->
   <style>
     :root {
       --toast-ok: {{ SETTINGS.toast_ok|default('#4caf50') }};
@@ -23,15 +21,15 @@
   <script>
     (function () {
       const mTheme = document.querySelector('meta[name="domovra:theme"]');
-      const mSide = document.querySelector('meta[name="domovra:sidebar"]');
-      const pref = (mTheme && mTheme.content) || 'auto';
-      const html = document.documentElement;
+      const mSide  = document.querySelector('meta[name="domovra:sidebar"]');
+      const pref   = (mTheme && mTheme.content) || 'auto';
+      const html   = document.documentElement;
       function setTheme(mode) {
         if (!html) return;
         if (mode === 'light' || mode === 'dark') {
           html.setAttribute('data-theme', mode);
           html.style.colorScheme = mode;
-          try { localStorage.setItem('domovra_theme', mode); } catch (e) { }
+          try { localStorage.setItem('domovra_theme', mode); } catch (e) {}
         } else {
           const isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
           html.setAttribute('data-theme', isDark ? 'dark' : 'light');
@@ -41,7 +39,7 @@
       if (pref === 'light' || pref === 'dark') setTheme(pref);
       else {
         let saved = null;
-        try { saved = localStorage.getItem('domovra_theme'); } catch (e) { }
+        try { saved = localStorage.getItem('domovra_theme'); } catch (e) {}
         setTheme((saved === 'light' || saved === 'dark') ? saved : 'auto');
       }
       try {
@@ -50,13 +48,12 @@
           const now = (mTheme && mTheme.content) || 'auto';
           if (now === 'auto') setTheme('auto');
         });
-      } catch (e) { }
+      } catch (e) {}
       const mini = (mSide && mSide.content === '1');
       if (mini) html.classList.add('sidebar-mini'); else html.classList.remove('sidebar-mini');
     })();
   </script>
 
-  <!-- Précharge la CSS ; si préload annulé par le navigateur, le <link> normal prend le relai -->
   <link rel="preload" href="{{ BASE }}{{ ASSET_CSS_PATH }}" as="style">
   <link rel="stylesheet" href="{{ BASE }}{{ ASSET_CSS_PATH }}">
 
@@ -66,42 +63,97 @@
 <body>
   <div class="layout">
     <aside>
-      <nav class="menu">
-        <a href="{{ BASE }}" class="{% if request.path == BASE %}active{% endif %}"><span
-            class="ico">🏠</span><span>Accueil</span></a>
-        <a href="{{ BASE }}products" class="{% if request.path.startswith(BASE ~ 'products')  %}active{% endif %}"><span
-            class="ico">📦</span><span>Fiche produit</span></a>
-        <a href="{{ BASE }}shopping" class="{% if request.path.startswith(BASE ~ 'shopping') %}active{% endif %}">
-          <span class="ico">🧾</span><span>🚧Liste de courses🚧</span>
+
+      <!-- ===== Brand ===== -->
+      <div class="sidebar-brand">
+        <div class="brand-mark">Dv</div>
+        <div class="brand-info">
+          <span class="brand-name">Domovra</span>
+          <span class="brand-tag">Inventaire maison</span>
+        </div>
+      </div>
+
+      <!-- ===== Navigation ===== -->
+      <nav class="menu" aria-label="Navigation principale">
+
+        <a href="{{ BASE }}" class="{% if request.path == BASE %}active{% endif %}">
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3 9.5L10 3l7 6.5V17a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5z"/>
+            <path d="M7.5 18v-6h5v6"/>
+          </svg>
+          <span>Accueil</span>
         </a>
+
+        <a href="{{ BASE }}products" class="{% if request.path.startswith(BASE ~ 'products') %}active{% endif %}">
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M16 6.5L10 3 4 6.5v7L10 17l6-3.5v-7z"/>
+            <path d="M4 6.5l6 3.5 6-3.5M10 10v7"/>
+          </svg>
+          <span>Produits</span>
+        </a>
+
+        <a href="{{ BASE }}shopping" class="{% if request.path.startswith(BASE ~ 'shopping') %}active{% endif %}">
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3 5h14M3 10h9M3 15h7"/>
+            <circle cx="15.5" cy="14.5" r="2.5"/>
+            <path d="M14 13.5l1 1 2-2"/>
+          </svg>
+          <span>Liste de courses</span>
+        </a>
+
         <a href="{{ BASE }}achats" class="{% if request.path.startswith(BASE ~ 'achats') %}active{% endif %}">
-          <span class="ico">🛒</span><span>Achats</span></a>
-        <a href="{{ BASE }}lots" class="{% if request.path.startswith(BASE ~ 'lots')       %}active{% endif %}"><span
-            class="ico">🧮</span><span>Mon stocks</span></a>
-        <a href="{{ BASE }}settings"
-          class="{% if request.path.startswith(BASE ~ 'settings')   %}active{% endif %}"><span
-            class="ico">⚙️</span><span>🚧Paramètres🚧</span></a>
-        <a href="{{ BASE }}support" class="{% if request.path.startswith(BASE ~ 'support')    %}active{% endif %}"><span
-            class="ico">☕</span><span>Support</span></a>
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M1.5 1.5h2.8l2.5 9.5h9l2-6.5H5.5"/>
+            <circle cx="8.5" cy="17" r="1.5"/>
+            <circle cx="15.5" cy="17" r="1.5"/>
+          </svg>
+          <span>Achats</span>
+        </a>
+
+        <a href="{{ BASE }}lots" class="{% if request.path.startswith(BASE ~ 'lots') %}active{% endif %}">
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M2 6.5L10 3l8 3.5-8 3.5-8-3.5z"/>
+            <path d="M2 11l8 3.5L18 11"/>
+            <path d="M2 15.5L10 19l8-3.5"/>
+          </svg>
+          <span>Mon stock</span>
+        </a>
+
+        <a href="{{ BASE }}settings" class="{% if request.path.startswith(BASE ~ 'settings') %}active{% endif %}">
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="10" cy="10" r="2.5"/>
+            <path d="M10 2v1.5M10 16.5V18M2 10h1.5M16.5 10H18M4.4 4.4l1.1 1.1M14.5 14.5l1.1 1.1M4.4 15.6l1.1-1.1M14.5 5.5l1.1-1.1"/>
+          </svg>
+          <span>Paramètres</span>
+        </a>
+
+        <a href="{{ BASE }}support" class="{% if request.path.startswith(BASE ~ 'support') %}active{% endif %}">
+          <svg class="nav-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M10 17.5S3 12.5 3 7.5a4.5 4.5 0 018.5-2.1A4.5 4.5 0 0117 7.5c0 5-7 10-7 10z"/>
+          </svg>
+          <span>Support</span>
+        </a>
+
       </nav>
     </aside>
 
     <main>
       <header>
         <div class="header-left">
-          <button class="hamburger" id="hamburger" aria-label="Ouvrir le menu"
-            aria-expanded="false"><span></span><span></span><span></span></button>
+          <button class="hamburger" id="hamburger" aria-label="Ouvrir le menu" aria-expanded="false">
+            <span></span><span></span><span></span>
+          </button>
           {% set seg = request.path.replace(BASE, '').strip('/') %}
           <h1 class="app-title">
-            Domovra ✓ —
             {% if seg == '' %}Accueil
             {% elif seg.startswith('products') %}Produits
             {% elif seg.startswith('locations') %}Emplacements
-            {% elif seg.startswith('lots') %}Stocks
+            {% elif seg.startswith('lots') %}Mon stock
             {% elif seg.startswith('settings') %}Paramètres
             {% elif seg.startswith('journal') %}Journal
             {% elif seg.startswith('support') %}Support
             {% elif seg.startswith('shopping') %}Liste de courses
+            {% elif seg.startswith('achats') %}Achats
             {% else %}{{ seg|replace('-', ' ')|capitalize }}{% endif %}
           </h1>
         </div>
@@ -110,11 +162,27 @@
           <div class="header-chips">
             {% if products is defined and lots is defined %}
             {% set soon = lots|selectattr('status','equalto','yellow')|list %}
-            {% set urg = lots|selectattr('status','equalto','red')|list %}
-            <span class="chip">📦 Produits : <b>{{ products|length }}</b></span>
-            <span class="chip">🧊 Stocks : <b>{{ lots|length }}</b></span>
-            <span class="chip">⏰ Bientôt : <b>{{ soon|length }}</b></span>
-            <span class="chip">⚠️ Urgents : <b>{{ urg|length }}</b></span>
+            {% set urg  = lots|selectattr('status','equalto','red')|list %}
+            <span class="chip chip-stat">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" width="13" height="13" aria-hidden="true"><path d="M8 1L1.5 4.5v7L8 15l6.5-3.5v-7L8 1zM1.5 4.5L8 8l6.5-3.5M8 8v7"/></svg>
+              <b>{{ products|length }}</b><span class="chip-label">produits</span>
+            </span>
+            <span class="chip chip-stat">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" width="13" height="13" aria-hidden="true"><path d="M1 5L8 2l7 3-7 3-7-3z"/><path d="M1 9l7 3 7-3"/><path d="M1 13l7 3 7-3"/></svg>
+              <b>{{ lots|length }}</b><span class="chip-label">stocks</span>
+            </span>
+            {% if soon|length > 0 %}
+            <span class="chip chip-stat chip-warn">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" width="13" height="13" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M8 5v3.5M8 10.5v.5"/></svg>
+              <b>{{ soon|length }}</b><span class="chip-label">bientôt</span>
+            </span>
+            {% endif %}
+            {% if urg|length > 0 %}
+            <span class="chip chip-stat chip-danger">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" width="13" height="13" aria-hidden="true"><path d="M8 1.5L1 13.5h14L8 1.5z"/><path d="M8 6.5v3M8 11v.5"/></svg>
+              <b>{{ urg|length }}</b><span class="chip-label">urgents</span>
+            </span>
+            {% endif %}
             {% endif %}
             {% block header_right %}{% endblock %}
           </div>
@@ -130,13 +198,12 @@
   <!-- TOASTS -->
   <div id="toast-stack" class="toast-stack" aria-live="polite"></div>
 
-  <!-- JS : sidebar mobile + toasts (inchangé) -->
   <script>
     (function () {
       const btn = document.getElementById('hamburger');
       if (!btn) return;
       const isMobile = () => matchMedia('(max-width:1024px)').matches;
-      const open = () => { document.body.classList.add('sidebar-open'); btn.setAttribute('aria-expanded', 'true'); };
+      const open  = () => { document.body.classList.add('sidebar-open');    btn.setAttribute('aria-expanded', 'true');  };
       const close = () => { document.body.classList.remove('sidebar-open'); btn.setAttribute('aria-expanded', 'false'); };
       btn.addEventListener('click', () => (document.body.classList.contains('sidebar-open') ? close() : open()));
       addEventListener('resize', () => { if (!isMobile()) close(); });
@@ -147,11 +214,10 @@
 
     (function () {
       const stack = document.getElementById('toast-stack');
-      const mDur = document.querySelector('meta[name="domovra:toastDuration"]');
+      const mDur  = document.querySelector('meta[name="domovra:toastDuration"]');
       const defaultDuration = mDur ? (parseInt(mDur.content || '3000', 10) || 3000) : 3000;
 
-      const cssVar = (name) =>
-        getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+      const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
       function hexToRgba(hex, a) {
         if (!hex) return '';
@@ -164,31 +230,27 @@
       }
 
       function colorFor(type) {
-        if (type === 'warn') return cssVar('--toast-warn') || '#ffb300';
+        if (type === 'warn')  return cssVar('--toast-warn')  || '#ffb300';
         if (type === 'error') return cssVar('--toast-error') || '#ef5350';
         return cssVar('--toast-ok') || '#4caf50';
       }
 
       function showToast(msg, type = 'ok', timeout) {
         if (!stack) return;
-        const el = document.createElement('div');
+        const el     = document.createElement('div');
         el.className = 'toast ' + (type || 'ok');
         el.textContent = msg;
-
         const stripe = document.createElement('i');
         stripe.className = 'stripe';
         const col = colorFor(type);
         stripe.style.backgroundColor = col;
         el.appendChild(stripe);
-
         el.style.backgroundColor = hexToRgba(col, 0.10);
-
         stack.appendChild(el);
-
         const hide = () => {
           el.style.transition = '200ms ease';
-          el.style.opacity = '0';
-          el.style.transform = 'translateY(-4px)';
+          el.style.opacity    = '0';
+          el.style.transform  = 'translateY(-4px)';
           setTimeout(() => el.remove(), 200);
         };
         const t = setTimeout(hide, timeout ?? defaultDuration);
