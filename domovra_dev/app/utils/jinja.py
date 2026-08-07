@@ -1,3 +1,4 @@
+import json
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from .assets import asset_ver, ensure_hashed_asset
 from config import START_TS
@@ -68,6 +69,16 @@ def fmt_qty(qty, unit: str) -> dict:
         return {"v": _pretty_num(q), "u": u}
     return {"v": _pretty_num(q), "u": u}
 
+def _get_locations_json() -> str:
+    """Retourne les emplacements DB sous forme JSON pour AC_LISTS.locations."""
+    try:
+        from db import list_locations
+        locs = list_locations()
+        return json.dumps([loc["name"] for loc in locs], ensure_ascii=False)
+    except Exception:
+        return "[]"
+
+
 def build_jinja_env():
     env = Environment(
         loader=FileSystemLoader("templates"),
@@ -79,6 +90,7 @@ def build_jinja_env():
     env.globals["ASSET_CSS_PATH"] = ensure_hashed_asset("static/css/domovra.css")
     env.globals["START_TS"] = START_TS
     env.globals["fmt_qty"] = fmt_qty
+    env.globals["AC_LOCATIONS_JSON"] = _get_locations_json
     # filters
     env.filters["pretty_num"] = _pretty_num
     env.filters["pluralize_fr"] = pluralize_fr

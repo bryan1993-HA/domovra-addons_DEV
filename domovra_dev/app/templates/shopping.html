@@ -78,7 +78,7 @@
 
     <div>
       <label>Magasin</label>
-      <input class="bp-store" type="text" name="store" list="french-stores"
+      <input class="bp-store" type="text" name="store" data-autocomplete="stores"
         value="{{ I.store or '' }}" placeholder="Lidl, Carrefour…">
     </div>
 
@@ -201,7 +201,7 @@
   <div class="sh-store-wrap">
     <label for="session-store">🏪</label>
     <input id="session-store" type="text" placeholder="Magasin de la session…"
-      list="french-stores"
+      data-autocomplete="stores"
       title="Pré-remplit le Magasin sur chaque article — modifiable par article">
   </div>
   <div class="sh-stats">
@@ -356,27 +356,7 @@
 </div>
 {% endif %}
 
-{# ── Datalist enseignes françaises ───────────────────────────────────────── #}
-<datalist id="french-stores">
-  <option value="E.Leclerc"><option value="Leclerc Drive">
-  <option value="Carrefour"><option value="Carrefour Market"><option value="Carrefour Express">
-  <option value="Carrefour City"><option value="Carrefour Contact"><option value="Carrefour Drive">
-  <option value="Auchan"><option value="Auchan Supermarché"><option value="Auchan Drive">
-  <option value="Hyper U"><option value="Super U"><option value="U Express">
-  <option value="Utile"><option value="Marché U"><option value="U Drive">
-  <option value="Intermarché"><option value="Intermarché Express">
-  <option value="Intermarché Contact"><option value="Intermarché Drive">
-  <option value="Géant Casino"><option value="Casino Supermarché">
-  <option value="Monoprix"><option value="Monop'"><option value="Franprix">
-  <option value="Cora"><option value="Bi1"><option value="Match"><option value="Supeco">
-  <option value="Lidl"><option value="Aldi"><option value="Netto">
-  <option value="Leader Price"><option value="Action"><option value="Normal"><option value="Penny Market">
-  <option value="Biocoop"><option value="Naturalia"><option value="La Vie Claire">
-  <option value="Bio c'Bon"><option value="Satoriz"><option value="Biomonde"><option value="L'Eau Vive">
-  <option value="Grand Frais"><option value="Picard"><option value="Thiriet">
-  <option value="Metro"><option value="Costco"><option value="Promocash"><option value="Colruyt">
-  <option value="Marché local"><option value="Producteur local"><option value="Chronodrive">
-</datalist>
+{# Datalist natif supprimé — remplacé par data-autocomplete="stores" (autocomplete.js) #}
 
 </div>{# fin .wrap #}
 

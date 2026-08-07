@@ -261,6 +261,12 @@
     })();
   </script>
 
+  <script>
+    window.AC_LISTS = window.AC_LISTS || {};
+    window.AC_LISTS.locations = {{ AC_LOCATIONS_JSON() | safe }};
+  </script>
+  <script src="{{ BASE }}static/js/autocomplete.js"></script>
+
   {% block scripts %}{% endblock %}
 </body>
 
