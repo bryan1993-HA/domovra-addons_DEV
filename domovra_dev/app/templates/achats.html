@@ -231,7 +231,10 @@
                                 data-brand="{{ p.brand or '' }}"
                                 data-default-location="{{ p.default_location_id or '' }}"
                                 data-no-freeze="{{ 1 if p.no_freeze else 0 }}"
-                                data-date-type="{{ (p.expiry_kind or p.date_type or 'DLC') | upper }}">
+                                data-date-type="{{ (p.expiry_kind or p.date_type or 'DLC') | upper }}"
+                                data-shelf="{{ p.default_shelf_life_days or '' }}"
+                                data-freeze-shelf="{{ p.default_freeze_shelf_days or '' }}"
+                                data-no-expiry="{{ 1 if (p.no_expiry or 0) else 0 }}">
                                 {{ p.name }}{% if p.brand %} — {{ p.brand }}{% endif %}
                             </option>
 
@@ -813,8 +816,40 @@
 
             setHint(offQtyHint, '');
             updateCalcs();
+
+            // === Auto-remplissage DLC depuis durée de conservation (F6) ===
+            const noExpiryRaw = (opt.dataset.noExpiry || '0').toString().trim();
+            const noExpiry = (noExpiryRaw === '1' || noExpiryRaw === 'true');
+            const shelfDays = parseInt(opt.dataset.shelf || '', 10);
+            if (bestBeforeInput) {
+                if (noExpiry) {
+                    bestBeforeInput.value = '';
+                } else if (!bestBeforeInput.value && shelfDays > 0) {
+                    const d = new Date();
+                    d.setDate(d.getDate() + shelfDays);
+                    bestBeforeInput.value = d.toISOString().slice(0, 10);
+                }
+            }
         });
 
+        // === Recalcul DLC quand frozen_on change (F6) ===
+        document.querySelector('#frozen_on')?.addEventListener('change', function () {
+            const sel = document.querySelector('#product_select');
+            if (!sel) return;
+            const opt = sel.options[sel.selectedIndex];
+            if (!opt) return;
+
+            const bbInput = document.querySelector('#best_before');
+            if (!bbInput) return;
+
+            const frozenVal = this.value;
+            const freezeShelf = parseInt(opt.dataset.freezeShelf || '', 10);
+            if (frozenVal && freezeShelf > 0) {
+                const base = new Date(frozenVal);
+                base.setDate(base.getDate() + freezeShelf);
+                bbInput.value = base.toISOString().slice(0, 10);
+            }
+        });
 
         // Facultatif : applique les règles au chargement (ou après sélection via scan)
         try { productSel?.dispatchEvent(new Event('change')); } catch { }

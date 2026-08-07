@@ -190,6 +190,7 @@ def product_add(
     parent_id: str = Form(""),
     barcode: str = Form(""),
     min_qty: str = Form(""),
+    no_expiry: str = Form(""),
 ):
     try:
         shelf = int(shelf)
@@ -219,6 +220,7 @@ def product_add(
         no_freeze=(no_freeze or "0"),
         category=category,
         parent_id=parent_id or None,
+        no_expiry=(no_expiry or "0"),
     )
 
     log_event("product.add", {
@@ -259,6 +261,7 @@ def product_update(
     parent_id: str = Form(""),
     barcode: str = Form(""),
     min_qty: str = Form(""),
+    no_expiry: str = Form(""),
 ):
     try:
         shelf = int(shelf)
@@ -288,6 +291,7 @@ def product_update(
         no_freeze=(no_freeze or "0"),
         category=category,
         parent_id=parent_id or None,
+        no_expiry=(no_expiry or "0"),
     )
 
     log_event("product.update", {
@@ -300,6 +304,7 @@ def product_update(
         "no_freeze": 1 if str(no_freeze).lower() in ("1","true","on","yes") else 0,
         "category": category or None,
         "parent_id": parent_id or None,
+        "no_expiry": 1 if str(no_expiry or "0").lower() in ("1","true","on","yes") else 0,
     })
 
     return RedirectResponse(ingress_base(request) + "products",

@@ -25,6 +25,10 @@
       <button type="button" class="btn ghost btn-filters" onclick="document.getElementById('dlg-filters')?.showModal()">
         Filtres
       </button>
+
+      <button type="button" class="btn ghost" id="btn-hide-zero" title="Masquer les lots dont la quantité est à 0">
+        Masquer stock à 0
+      </button>
     </div>
 
     <!-- Ligne méta : compteur + résumé des filtres -->
@@ -59,7 +63,8 @@
 
     <article class="prod-card" data-name="{{ (it.name or it.article_name or it.product)|lower }}"
       data-product="{{ (it.name or it.article_name or it.product)|lower }}" data-loc="{{ it.location|lower }}"
-      data-barcode="{{ (code or '')|lower }}" data-status="{{ it.status }}">
+      data-barcode="{{ (code or '')|lower }}" data-status="{{ it.status }}"
+      data-qty="{{ it.qty|float }}">
 
       <!-- En-tête -->
       <div class="pc-head">
@@ -282,6 +287,16 @@
     return s && l && t && p;
   }
 
+  const HIDE_ZERO_KEY = 'domovra_hide_zero';
+  let hideZero = localStorage.getItem(HIDE_ZERO_KEY) === '1';
+
+  function syncHideZeroBtn() {
+    const btn = document.getElementById('btn-hide-zero');
+    if (!btn) return;
+    btn.classList.toggle('active', hideZero);
+    btn.textContent = hideZero ? 'Afficher stock à 0' : 'Masquer stock à 0';
+  }
+
   function applyFilter() {
     const txt = (q?.value || '').toLowerCase().trim();
     const loc = (fLoc?.value || '').toLowerCase().trim();
@@ -289,13 +304,27 @@
     const prod = (fProd?.value || '').toLowerCase().trim();
     let shown = 0;
     cards.forEach(card => {
-      const m = matches(card.dataset, txt, loc, st, prod);
-      card.style.display = m ? '' : 'none';
-      if (m) shown++;
+      let visible = matches(card.dataset, txt, loc, st, prod);
+      if (visible && hideZero) {
+        const qty = parseFloat(card.dataset.qty || '0');
+        if (qty <= 0) visible = false;
+      }
+      card.style.display = visible ? '' : 'none';
+      if (visible) shown++;
     });
-    if (countEl) countEl.textContent = (txt || loc || st || prod) ? shown : cards.length;
+    if (countEl) countEl.textContent = (txt || loc || st || prod || hideZero) ? shown : cards.length;
   }
   [q, fLoc, fStatus, fProd].forEach(el => el && el.addEventListener('input', applyFilter));
+
+  document.getElementById('btn-hide-zero')?.addEventListener('click', () => {
+    hideZero = !hideZero;
+    localStorage.setItem(HIDE_ZERO_KEY, hideZero ? '1' : '0');
+    syncHideZeroBtn();
+    applyFilter();
+  });
+
+  syncHideZeroBtn();
+  if (hideZero) applyFilter();
 
   /* --- Toasts via querystring --- */
   (function () {

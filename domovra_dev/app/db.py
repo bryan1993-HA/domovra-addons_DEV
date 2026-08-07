@@ -114,6 +114,8 @@ def init_db():
             c.execute("ALTER TABLE products ADD COLUMN category TEXT")
         if not _column_exists(c, "products", "parent_id"):
             c.execute("ALTER TABLE products ADD COLUMN parent_id INTEGER")
+        if not _column_exists(c, "products", "no_expiry"):
+            c.execute("ALTER TABLE products ADD COLUMN no_expiry INTEGER NOT NULL DEFAULT 0")
 
         # ----- Historique complet (soft delete + conversions + raisons)
         if not _column_exists(c, "stock_lots", "status"):
@@ -229,6 +231,7 @@ def add_product(
     no_freeze: int | None = 0,
     category: str | None = None,
     parent_id: int | None = None,
+    no_expiry: int | None = 0,
 ) -> int:
     name = name.strip()
     unit = (unit or 'pièce').strip()
@@ -264,6 +267,7 @@ def add_product(
     except Exception:
         default_freeze_shelf_days = None
     no_freeze = 1 if str(no_freeze).strip() in ("1","true","on","yes") else 0
+    no_expiry = 1 if str(no_expiry or "0").strip() in ("1","true","on","yes") else 0
     category = (category or "").strip() or None
     try:
         parent_id = int(parent_id) if parent_id not in (None, "",) else None
@@ -276,11 +280,11 @@ def add_product(
                 """INSERT INTO products
                    (name, unit, default_shelf_life_days, barcode, min_qty,
                     description, default_location_id, low_stock_enabled,
-                    expiry_kind, default_freeze_shelf_days, no_freeze, category, parent_id)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    expiry_kind, default_freeze_shelf_days, no_freeze, category, parent_id, no_expiry)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (name, unit, shelf, barcode, min_qty,
                  description, default_location_id, low_stock_enabled,
-                 expiry_kind, default_freeze_shelf_days, no_freeze, category, parent_id)
+                 expiry_kind, default_freeze_shelf_days, no_freeze, category, parent_id, no_expiry)
             )
             c.commit()
             return cur.lastrowid
@@ -312,7 +316,8 @@ def list_products():
               default_freeze_shelf_days,
               COALESCE(no_freeze,0)         AS no_freeze,
               COALESCE(category,'')         AS category,
-              parent_id
+              parent_id,
+              COALESCE(no_expiry,0)         AS no_expiry
             FROM products
             ORDER BY name COLLATE NOCASE
             """
@@ -339,6 +344,7 @@ def list_products_with_stats():
           COALESCE(p.no_freeze,0) AS no_freeze,
           COALESCE(p.category,'') AS category,
           p.parent_id,
+          COALESCE(p.no_expiry,0) AS no_expiry,
           COALESCE(t.qty_total,0) AS qty_total,
           COALESCE(t.lots_count,0) AS lots_count,
           CASE WHEN p.min_qty IS NULL THEN NULL ELSE COALESCE(t.qty_total,0) - p.min_qty END AS delta
@@ -388,6 +394,7 @@ def update_product(
     no_freeze: int | None = None,
     category: str | None = None,
     parent_id: int | None = None,
+    no_expiry: int | None = None,
 ):
     name = name.strip()
     unit = (unit or 'pièce').strip()
@@ -439,6 +446,9 @@ def update_product(
 
     if no_freeze is not None:
         payload["no_freeze"] = 1 if str(no_freeze).lower() in ("1","true","on","yes") else 0
+
+    if no_expiry is not None:
+        payload["no_expiry"] = 1 if str(no_expiry).lower() in ("1","true","on","yes") else 0
 
     try:
         payload["parent_id"] = int(parent_id) if parent_id not in (None,"") else None

@@ -107,9 +107,15 @@ def index(request: Request):
     # seuils dynamiques depuis /data/settings.json (fallback env/valeurs sûres)
     WARNING_DAYS, CRITICAL_DAYS = get_retention_thresholds()
 
+    # produits marqués "sans DLC / non périssable" — leurs lots n'apparaissent pas dans "À consommer en priorité"
+    no_expiry_pids = {p["id"] for p in products if p.get("no_expiry")}
+
     # statut pour le bloc "À consommer en priorité"
     for it in lots:
-        it["status"] = status_for(it.get("best_before"), WARNING_DAYS, CRITICAL_DAYS)
+        if it.get("product_id") in no_expiry_pids:
+            it["status"] = "none"
+        else:
+            it["status"] = status_for(it.get("best_before"), WARNING_DAYS, CRITICAL_DAYS)
 
     # Sécurité : si une fiche n’a pas de préférence, on suit le stock (1)
     DEFAULT_LOW_STOCK = 1

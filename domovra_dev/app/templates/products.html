@@ -143,6 +143,13 @@
         </label>
       </div>
 
+      <div class="field" data-gate="create">
+        <label class="checkbox-inline">
+          <input type="checkbox" id="create_no_expiry" name="no_expiry" value="1">
+          <span>Sans DLC / non périssable</span>
+        </label>
+      </div>
+
       <div class="field" id="create_freeze_group" data-gate="create">
         <div class="label">Péremption après congélation (jours)</div>
         <input name="default_freeze_shelf_days" id="create_freeze_shelf" type="number" min="1" placeholder="ex. 180">
@@ -274,6 +281,7 @@ Astuce : tu peux combiner (ex. « ddm produits laitiers »)."></span>
             data-expiry-kind="{{ (it.expiry_kind or 'DLC') }}" data-shelf="{{ it.default_shelf_life_days or '' }}"
             data-freeze-shelf="{{ it.default_freeze_shelf_days or '' }}"
             data-no-freeze="{{ 1 if (it.no_freeze is not none and it.no_freeze!=0) else 0 }}"
+            data-no-expiry="{{ 1 if (it.no_expiry or 0)!=0 else 0 }}"
             data-category="{{ it.category or '' }}" data-unit="{{ it.unit or 'pièce' }}"
             data-parent="{{ it.parent_id or '' }}">
             ✏️ Modifier
@@ -421,6 +429,11 @@ Astuce : tu peux combiner (ex. « ddm produits laitiers »)."></span>
       <div>
         <div class="label">Ne doit pas être congelé</div>
         <input type="checkbox" id="dlg-no-freeze" name="no_freeze" value="1" class="chk">
+      </div>
+
+      <div>
+        <div class="label">Sans DLC / non périssable</div>
+        <input type="checkbox" id="dlg-no-expiry" name="no_expiry" value="1" class="chk">
       </div>
 
       <div id="dlg-freeze-group">
@@ -1046,6 +1059,7 @@ Astuce : tu peux combiner (ex. « ddm produits laitiers »)."></span>
       $('#dlg-freeze-shelf').value = (edit.dataset.freezeShelf || '');
 
       const nf = $('#dlg-no-freeze'); if (nf) nf.checked = (edit.dataset.noFreeze === '1');
+      const ne = $('#dlg-no-expiry'); if (ne) ne.checked = (edit.dataset.noExpiry === '1');
 
       applyDlgFreezeVisibility();
       applyDlgMinUnitLogic();
