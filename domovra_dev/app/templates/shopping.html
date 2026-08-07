@@ -4,819 +4,625 @@
 {% block content %}
 <div class="wrap" data-page="shopping">
 
-  <style>
-    .add-line {
-      display: grid;
-      grid-template-columns:
-        minmax(240px, 3fr)
-        minmax(72px, 0.7fr)
-        minmax(180px, 1.2fr)
-        minmax(220px, 2fr)
-        auto;
-      gap: 12px;
-      align-items: center;
-    }
-    .add-line > * { min-width: 0; }
-    .add-line .input,
-    .add-line select,
-    .add-line input[type="text"],
-    .add-line input[type="number"] { width: 100%; box-sizing: border-box; }
-    @media (max-width:1024px) {
-      .add-line { grid-template-columns: 1fr 1fr; }
-      .add-line .span-2-md { grid-column: span 2; }
-      .add-line .btn-add { grid-column: span 2; justify-self: end; }
-    }
-    @media (max-width:700px) {
-      .add-line { grid-template-columns: 1fr; }
-      .add-line .btn-add { justify-self: stretch; }
-    }
+{# ── Macro : rendu d'une ligne article ───────────────────────────────────── #}
+{% macro render_item(I) %}
+<div class="sh-item {% if I.is_checked %}is-checked{% endif %}" id="sh-item-{{ I.id }}">
 
-    /* Grille panneau Acheter */
-    .buy-grid-v2 {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-      padding: 12px 0 4px;
-    }
-    .buy-grid-v2 .span-full { grid-column: 1 / -1; }
-    @media (max-width:700px) {
-      .buy-grid-v2 { grid-template-columns: 1fr; }
-      .buy-grid-v2 .span-full { grid-column: 1; }
-    }
+  {# Checkbox — soumet un form caché #}
+  <input type="checkbox" class="sh-check" data-item-id="{{ I.id }}"
+    {% if I.is_checked %}checked{% endif %}
+    aria-label="Marquer {{ I.product_name }}">
+  <form id="toggle-form-{{ I.id }}" method="post"
+    action="{{ BASE }}shopping/item/toggle" style="display:none">
+    <input type="hidden" name="item_id" value="{{ I.id }}">
+    <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
+  </form>
 
-    /* Badge "commis" */
-    .badge-committed {
-      display: inline-block;
-      background: var(--ok, #22c55e);
-      color: #fff;
-      font-size: .7rem;
-      padding: 1px 6px;
-      border-radius: 99px;
-      margin-left: 4px;
-      vertical-align: middle;
-    }
-
-    /* Session store bar */
-    .session-store-bar {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 8px 0 4px;
-      flex-wrap: wrap;
-    }
-    .session-store-bar label { font-size: .85rem; color: var(--muted); white-space: nowrap; }
-    .session-store-bar input { max-width: 200px; }
-  </style>
-
-  <!-- Toolbar d'état -->
-  <div class="shopping-toolbar" role="region" aria-label="Filtres liste d'achats">
-    <div class="left" role="tablist" aria-label="État d'affichage">
-      <a class="chip {% if STATUS!='done' %}active{% endif %}"
-        href="{{ BASE }}shopping?list={{ ACTIVE_LIST_ID }}&status=todo" role="tab"
-        aria-selected="{{ STATUS!='done' }}">À acheter</a>
-      <a class="chip {% if STATUS=='done' %}active{% endif %}"
-        href="{{ BASE }}shopping?list={{ ACTIVE_LIST_ID }}&status=done" role="tab"
-        aria-selected="{{ STATUS=='done' }}">Achetés</a>
-    </div>
-    <div class="right">
-      <span class="chip muted" aria-live="polite">🧾 Ticket: {{ PURCHASED_TODAY|length or 0 }}</span>
-      <span class="chip {% if ANOMALIES>0 %}warn{% else %}ok{% endif %}" title="Delta total entre prix rayon et ticket">
-        Δ {{ '%.2f'|format(TOTAL_DELTA) }} €
-      </span>
+  {# Corps #}
+  <div class="sh-item-body">
+    <div class="sh-item-name">{{ I.product_name }}</div>
+    <div class="sh-item-meta">
+      {% if I.qty_bought is not none %}
+      <span data-m="qty">{{ I.qty_bought }} {{ I.unit or I.product_unit or '' }} <span style="opacity:.6">(prévu {{ I.qty }})</span></span>
+      {% else %}
+      <span data-m="qty">{{ I.qty }} {{ I.unit or I.product_unit or '' }}</span>
+      {% endif %}
+      {% if I.store %}
+      <span class="sh-m-store" data-m="store">🏪 {{ I.store }}</span>
+      {% endif %}
+      {% if I.ticket_unit_price is not none %}
+      <span class="sh-m-price" data-m="price">{{ '%.2f'|format(I.ticket_unit_price) }} €/u</span>
+      {% elif I.shelf_unit_price is not none %}
+      <span class="sh-m-price" data-m="price">{{ '%.2f'|format(I.shelf_unit_price) }} € rayon</span>
+      {% endif %}
+      {% if I.best_before and not I.product_no_expiry %}
+      <span class="sh-m-dlc" data-m="dlc">DLC {{ I.best_before }}</span>
+      {% endif %}
+      {% if I.note %}
+      <span class="sh-m-note" data-m="note">{{ I.note }}</span>
+      {% endif %}
+      {% if I.committed %}
+      <span class="sh-m-stock" data-m="stock">✓ en stock</span>
+      {% endif %}
     </div>
   </div>
 
-  <!-- Carte 1 : Liste -->
-  <section class="abox v2" aria-labelledby="h-list">
-    <header class="abox-h">
-      <strong id="h-list">🧾 Liste de courses</strong>
-      <span class="muted">— sélectionnez ou créez une liste</span>
-      <div class="right">
-        <button class="btn sm secondary" type="submit" form="form-open-list" title="Ouvrir">Ouvrir</button>
-        <form id="form-generate" method="post" action="{{ BASE }}shopping/list/generate" style="display:inline"
-          onsubmit="return confirm('Ajouter les produits en rupture ou sous le seuil minimum ?');">
-          <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
-          <button class="btn sm secondary" type="submit">Générer (ruptures + &lt; min)</button>
-        </form>
-      </div>
-    </header>
-    <div class="abox-c">
-      <div class="grid-2">
-        <form id="form-open-list" class="inline" method="get" action="{{ BASE }}shopping">
-          <label class="label sr-only" for="shopping-list">Liste</label>
-          <input type="hidden" name="status" value="{{ STATUS }}">
-          <select id="shopping-list" name="list" class="input">
-            {% for L in LISTS %}
-            <option value="{{ L.id }}" {% if L.id==ACTIVE_LIST_ID %}selected{% endif %}>
-              {{ L.emoji or '🛒' }} {{ L.name }} — {{ L.to_buy or 0 }}
-            </option>
-            {% endfor %}
-          </select>
-          <button class="btn sm">Ouvrir</button>
-        </form>
-
-        <form class="inline right" method="post" action="{{ BASE }}shopping/list/create">
-          <label class="label sr-only" for="new-list-name">Créer une nouvelle liste</label>
-          <input id="new-list-name" class="input" name="name" placeholder="Créer une nouvelle liste…" required>
-          <input type="hidden" name="emoji" value="🛒">
-          <button class="btn">Créer</button>
-        </form>
-      </div>
-    </div>
-  </section>
-
-  <!-- Carte 2 : Ajouter un produit -->
-  <section class="abox v2" aria-labelledby="h-add">
-    <header class="abox-h">
-      <strong id="h-add">➕ Ajouter un produit</strong>
-    </header>
-    <div class="abox-c">
-      <form method="post" action="{{ BASE }}shopping/item/add" class="grid add-grid grid-add add-line"
-        aria-label="Ajout rapide d'un produit">
-        <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
-
-        <div class="span-2-md">
-          <label class="label sr-only" for="product-id-display">Produit</label>
-          <input id="product-id-display" list="products" name="product_id_display" class="input" autocomplete="off"
-            placeholder="— Ajouter un produit… —" required>
-          <input type="hidden" id="product_id_hidden" name="product_id">
-          <datalist id="products">
-            {% for P in PRODUCTS %}
-            <option
-              value="{{ P.id }} — {{ P.name }}{% if P.unit %} ({{ P.unit }}){% endif %}{% if P.barcode %} [{{ P.barcode }}]{% endif %}">
-            </option>
-            {% endfor %}
-          </datalist>
-        </div>
-
-        <div>
-          <label class="label sr-only" for="qty">Quantité</label>
-          <input id="qty" class="input" type="number" name="qty" step="0.01" min="0" value="1">
-        </div>
-
-        <div>
-          <label class="label sr-only" for="unit">Unité</label>
-          <input id="unit" class="input" type="text" name="unit" placeholder="Par défaut: unité du produit">
-        </div>
-
-        <div class="span-2-md">
-          <label class="label sr-only" for="note">Note</label>
-          <input id="note" class="input" type="text" name="note" placeholder="Précision (marque, format…)">
-        </div>
-
-        <div class="right btn-add">
-          <button class="btn ok">Ajouter</button>
-        </div>
-      </form>
-
-      <div class="muted" style="margin-top:.25rem;">
-        Si le produit n'existe pas :
-        <a class="link" href="{{ BASE }}products?toast=add_new">créer un produit</a>.
-      </div>
-    </div>
-  </section>
-
-  <!-- Carte 3 : Articles -->
-  <section class="abox v2" aria-labelledby="h-items">
-    <header class="abox-h">
-      <strong id="h-items">🗒️ Articles</strong>
-      <span class="muted">— {{ ITEMS|length or 0 }} élément{{ (ITEMS|length or 0) > 1 and 's' or '' }}</span>
-      <div class="right">
-        {% if TO_COMMIT > 0 %}
-        <button class="btn sm ok" type="button" onclick="document.getElementById('dlg-commit').showModal()">
-          📦 Envoyer en stock ({{ TO_COMMIT }})
-        </button>
-        {% endif %}
-        <button class="btn sm secondary" type="button" id="btn-export-csv">🗂️ Export CSV</button>
-        <button class="btn sm secondary" type="button" onclick="window.print()">🖨️ Imprimer</button>
-        <form method="post" action="{{ BASE }}shopping/item/delete_checked" style="display:inline"
-          onsubmit="return confirm('Supprimer tous les articles cochés ?');">
-          <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
-          <button class="btn sm warn" type="submit">🧹 Nettoyer (cochés)</button>
-        </form>
-      </div>
-    </header>
-
-    <!-- Barre magasin de session -->
-    <div class="abox-c" style="padding-bottom:4px;border-bottom:1px solid var(--line)">
-      <div class="session-store-bar">
-        <label for="session-store">🏪 Magasin de cette session :</label>
-        <input id="session-store" class="input" type="text" placeholder="Lidl, Carrefour…"
-          list="french-stores"
-          title="Pré-remplit le champ Magasin pour chaque article. Modifiable par article.">
-        <span class="muted" style="font-size:.8rem;">Optionnel — propagé à chaque panneau Acheter</span>
-      </div>
-    </div>
-
-    <div class="abox-c">
-      {% if ITEMS|length == 0 %}
-      <p class="muted">Aucun article pour cette vue.</p>
-      {% else %}
-
-      <!-- Table desktop -->
-      <div class="table-wrap hide-mobile">
-        <table class="table" aria-describedby="table-caption">
-          <caption id="table-caption" class="sr-only">Tableau des articles de la liste</caption>
-          <colgroup>
-            <col style="width:40%">
-            <col style="width:10%">
-            <col style="width:18%">
-            <col style="width:32%">
-          </colgroup>
-          <thead>
-            <tr>
-              <th scope="col">Produit</th>
-              <th scope="col">Qté</th>
-              <th scope="col">Note</th>
-              <th scope="col" class="right">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for I in ITEMS %}
-            <tr class="{% if I.is_checked %}checked{% endif %}">
-              <td>
-                <div>
-                  <strong class="mono">{{ I.product_name }}</strong>
-                  {% if I.committed %}<span class="badge-committed">✓ en stock</span>{% endif %}
-                </div>
-                {% if I.product_unit %}<small class="muted">Unité: {{ I.product_unit }}</small>{% endif %}
-                {% if I.store %}<div><small class="muted">🏪 {{ I.store }}</small></div>{% endif %}
-                {% if I.best_before %}<div><small class="muted">DLC: {{ I.best_before }}</small></div>{% endif %}
-                {% if I.shelf_unit_price is not none %}
-                <div><small class="muted">Prix rayon: {{ '%.2f'|format(I.shelf_unit_price) }} €/{{ I.unit or I.product_unit or '' }}</small></div>
-                {% endif %}
-                {% if I.ticket_unit_price is not none %}
-                <div><small class="muted">Ticket: {{ '%.2f'|format(I.ticket_unit_price) }} € (Δ {{
-                    '%.2f'|format(I.price_delta or (I.ticket_unit_price - (I.shelf_unit_price or 0))) }} €)</small></div>
-                {% endif %}
-              </td>
-              <td>
-                {{ I.qty_bought if I.qty_bought is not none else I.qty }}
-                <span class="muted">{{ I.unit or I.product_unit or '' }}</span>
-                {% if I.qty_bought is not none and I.qty_bought != I.qty %}
-                <div><small class="muted">Prévu: {{ I.qty }}</small></div>
-                {% endif %}
-              </td>
-              <td class="mono">{{ I.note or '' }}</td>
-              <td class="right">
-                {% if not I.is_checked %}
-                <button class="btn sm ok" data-buy="#buy-{{ I.id }}">Acheter</button>
-                <form method="post" action="{{ BASE }}shopping/item/toggle" class="inline">
-                  <input type="hidden" name="item_id" value="{{ I.id }}">
-                  <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
-                  <button class="btn sm secondary">Cocher</button>
-                </form>
-                {% else %}
-                <form method="post" action="{{ BASE }}shopping/item/toggle" class="inline">
-                  <input type="hidden" name="item_id" value="{{ I.id }}">
-                  <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
-                  <button class="btn sm secondary">Décocher</button>
-                </form>
-                {% endif %}
-                <form method="post" action="{{ BASE }}shopping/item/delete" class="inline"
-                  onsubmit="return confirm('Supprimer cet item ?');">
-                  <input type="hidden" name="item_id" value="{{ I.id }}">
-                  <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
-                  <button class="btn sm danger">Suppr.</button>
-                </form>
-              </td>
-            </tr>
-
-            {% if not I.is_checked %}
-            <tr id="buy-{{ I.id }}" class="buy-row" hidden>
-              <td colspan="4">
-                <form method="post" action="{{ BASE }}shopping/item/mark_bought"
-                  class="buy-grid-v2"
-                  aria-label="Valider l'achat"
-                  data-shelf-days="{{ I.product_shelf_days }}"
-                  data-no-expiry="{{ I.product_no_expiry }}"
-                  data-default-loc="{{ I.product_default_location_id or '' }}">
-                  <input type="hidden" name="item_id" value="{{ I.id }}">
-                  <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
-
-                  <div>
-                    <label class="label" for="d-qty-{{ I.id }}">
-                      Qté achetée <span class="muted">(prévu: {{ I.qty }} {{ I.unit or I.product_unit or '' }})</span>
-                    </label>
-                    <input id="d-qty-{{ I.id }}" class="input" name="qty_bought" type="number"
-                      step="0.01" min="0" value="{{ I.qty_bought if I.qty_bought is not none else I.qty }}">
-                  </div>
-
-                  <div>
-                    <label class="label" for="d-store-{{ I.id }}">Magasin</label>
-                    <input id="d-store-{{ I.id }}" class="input buy-store-input" name="store"
-                      list="french-stores"
-                      value="{{ I.store or '' }}" placeholder="Lidl, Carrefour…">
-                  </div>
-
-                  <div>
-                    <label class="label" for="d-shelf-{{ I.id }}">Prix rayon (€/{{ I.unit or I.product_unit or 'u' }})</label>
-                    <input id="d-shelf-{{ I.id }}" class="input" name="shelf_unit_price" type="number"
-                      step="0.01" min="0"
-                      value="{{ I.shelf_unit_price if I.shelf_unit_price is not none else '' }}">
-                  </div>
-
-                  <div>
-                    <label class="label" for="d-ticket-{{ I.id }}">Prix ticket (€/{{ I.unit or I.product_unit or 'u' }})</label>
-                    <input id="d-ticket-{{ I.id }}" class="input" name="ticket_unit_price" type="number"
-                      step="0.01" min="0"
-                      value="{{ I.ticket_unit_price if I.ticket_unit_price is not none else '' }}">
-                  </div>
-
-                  {% if not I.product_no_expiry %}
-                  <div>
-                    <label class="label" for="d-bb-{{ I.id }}">DLC / DDM</label>
-                    <input id="d-bb-{{ I.id }}" class="input buy-bb-input" name="best_before" type="date"
-                      value="{{ I.best_before or '' }}">
-                  </div>
-                  {% else %}
-                  <div></div>
-                  {% endif %}
-
-                  <div>
-                    <label class="label" for="d-loc-{{ I.id }}">Emplacement</label>
-                    <select id="d-loc-{{ I.id }}" class="input buy-loc-select" name="location_id">
-                      <option value="">— Choisir —</option>
-                      {% for loc in LOCATIONS %}
-                      <option value="{{ loc.id }}"
-                        {% if I.location_id and I.location_id == loc.id %}selected
-                        {% elif not I.location_id and I.product_default_location_id == loc.id %}selected
-                        {% endif %}>
-                        {{ loc.name }}{% if loc.is_freezer %} ❄️{% endif %}
-                      </option>
-                      {% endfor %}
-                    </select>
-                  </div>
-
-                  <div class="span-full right" style="gap:8px;display:flex;justify-content:flex-end">
-                    <button class="btn ok" type="submit">✅ Valider l'achat</button>
-                    <button type="button" class="btn secondary" data-closebuy="#buy-{{ I.id }}">Annuler</button>
-                  </div>
-                </form>
-              </td>
-            </tr>
-            {% endif %}
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-
-      <!-- Cartes mobile -->
-      <div class="cards show-mobile" role="list">
-        {% for I in ITEMS %}
-        <article class="card {% if I.is_checked %}checked{% endif %}" role="listitem">
-          <header class="card-h">
-            <strong>{{ I.product_name }}</strong>
-            {% if I.committed %}<span class="badge-committed">✓ stock</span>{% endif %}
-            {% if I.product_unit %}<span class="muted">— {{ I.product_unit }}</span>{% endif %}
-          </header>
-          <div class="card-c">
-            <div class="kv">
-              <div>
-                <span class="k">Qté</span>
-                <span class="v">
-                  {{ I.qty_bought if I.qty_bought is not none else I.qty }} {{ I.unit or I.product_unit or '' }}
-                  {% if I.qty_bought is not none and I.qty_bought != I.qty %}
-                  <small class="muted">(prévu {{ I.qty }})</small>
-                  {% endif %}
-                </span>
-              </div>
-              {% if I.note %}<div><span class="k">Note</span><span class="v mono">{{ I.note }}</span></div>{% endif %}
-              {% if I.store %}<div><span class="k">🏪</span><span class="v">{{ I.store }}</span></div>{% endif %}
-              {% if I.best_before %}<div><span class="k">DLC</span><span class="v">{{ I.best_before }}</span></div>{% endif %}
-              {% if I.shelf_unit_price is not none %}<div><span class="k">Rayon</span><span class="v">{{ '%.2f'|format(I.shelf_unit_price) }} €</span></div>{% endif %}
-              {% if I.ticket_unit_price is not none %}
-              <div><span class="k">Ticket</span><span class="v">{{ '%.2f'|format(I.ticket_unit_price) }} € (Δ {{
-                  '%.2f'|format(I.price_delta or (I.ticket_unit_price - (I.shelf_unit_price or 0))) }} €)</span></div>
-              {% endif %}
-            </div>
-          </div>
-          <footer class="card-f right">
-            {% if not I.is_checked %}
-            <button class="btn xs ok" data-buy="#mbuy-{{ I.id }}">Acheter</button>
-            <form method="post" action="{{ BASE }}shopping/item/toggle" class="inline">
-              <input type="hidden" name="item_id" value="{{ I.id }}">
-              <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
-              <button class="btn xs secondary">Cocher</button>
-            </form>
-            {% else %}
-            <form method="post" action="{{ BASE }}shopping/item/toggle" class="inline">
-              <input type="hidden" name="item_id" value="{{ I.id }}">
-              <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
-              <button class="btn xs secondary">Décocher</button>
-            </form>
-            {% endif %}
-            <form method="post" action="{{ BASE }}shopping/item/delete" class="inline"
-              onsubmit="return confirm('Supprimer cet item ?');">
-              <input type="hidden" name="item_id" value="{{ I.id }}">
-              <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
-              <button class="btn xs danger">Suppr.</button>
-            </form>
-          </footer>
-
-          {% if not I.is_checked %}
-          <div id="mbuy-{{ I.id }}" class="mobile-buy" hidden>
-            <form method="post" action="{{ BASE }}shopping/item/mark_bought"
-              class="buy-grid-v2"
-              aria-label="Valider l'achat (mobile)"
-              data-shelf-days="{{ I.product_shelf_days }}"
-              data-no-expiry="{{ I.product_no_expiry }}"
-              data-default-loc="{{ I.product_default_location_id or '' }}">
-              <input type="hidden" name="item_id" value="{{ I.id }}">
-              <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
-
-              <div>
-                <label class="label" for="m-qty-{{ I.id }}">
-                  Qté achetée <span class="muted">(prévu: {{ I.qty }})</span>
-                </label>
-                <input id="m-qty-{{ I.id }}" class="input" name="qty_bought" type="number"
-                  step="0.01" min="0" value="{{ I.qty_bought if I.qty_bought is not none else I.qty }}">
-              </div>
-
-              <div>
-                <label class="label" for="m-store-{{ I.id }}">Magasin</label>
-                <input id="m-store-{{ I.id }}" class="input buy-store-input" name="store"
-                  list="french-stores"
-                  value="{{ I.store or '' }}" placeholder="Lidl, Carrefour…">
-              </div>
-
-              <div>
-                <label class="label" for="m-ticket-{{ I.id }}">Prix ticket (€/u)</label>
-                <input id="m-ticket-{{ I.id }}" class="input" name="ticket_unit_price" type="number"
-                  step="0.01" min="0"
-                  value="{{ I.ticket_unit_price if I.ticket_unit_price is not none else '' }}">
-              </div>
-
-              <div>
-                <label class="label" for="m-shelf-{{ I.id }}">Prix rayon (€/u)</label>
-                <input id="m-shelf-{{ I.id }}" class="input" name="shelf_unit_price" type="number"
-                  step="0.01" min="0"
-                  value="{{ I.shelf_unit_price if I.shelf_unit_price is not none else '' }}">
-              </div>
-
-              {% if not I.product_no_expiry %}
-              <div class="span-full">
-                <label class="label" for="m-bb-{{ I.id }}">DLC / DDM</label>
-                <input id="m-bb-{{ I.id }}" class="input buy-bb-input" name="best_before" type="date"
-                  value="{{ I.best_before or '' }}">
-              </div>
-              {% endif %}
-
-              <div class="span-full">
-                <label class="label" for="m-loc-{{ I.id }}">Emplacement</label>
-                <select id="m-loc-{{ I.id }}" class="input buy-loc-select" name="location_id">
-                  <option value="">— Choisir —</option>
-                  {% for loc in LOCATIONS %}
-                  <option value="{{ loc.id }}"
-                    {% if I.location_id and I.location_id == loc.id %}selected
-                    {% elif not I.location_id and I.product_default_location_id == loc.id %}selected
-                    {% endif %}>
-                    {{ loc.name }}{% if loc.is_freezer %} ❄️{% endif %}
-                  </option>
-                  {% endfor %}
-                </select>
-              </div>
-
-              <div class="span-full right" style="display:flex;gap:8px;justify-content:flex-end">
-                <button class="btn ok" type="submit">✅ Valider</button>
-                <button type="button" class="btn secondary" data-closebuy="#mbuy-{{ I.id }}">Annuler</button>
-              </div>
-            </form>
-          </div>
-          {% endif %}
-        </article>
-        {% endfor %}
-      </div>
-
-      {% endif %}
-    </div>
-  </section>
-
-  <!-- Carte 4 : Contrôle ticket -->
-  {% if PURCHASED_TODAY and PURCHASED_TODAY|length>0 %}
-  <section class="abox v2" aria-labelledby="h-ticket">
-    <header class="abox-h">
-      <strong id="h-ticket">🧾 Contrôle ticket (aujourd'hui)</strong>
-      <span class="muted">Anomalies: {{ ANOMALIES }} • Δ total: {{ '%.2f'|format(TOTAL_DELTA) }} €</span>
-    </header>
-    <div class="abox-c">
-      <div class="table-wrap">
-        <table class="table" aria-label="Contrôle ticket du jour">
-          <colgroup>
-            <col style="width:42%">
-            <col style="width:12%">
-            <col style="width:18%">
-            <col style="width:28%">
-          </colgroup>
-          <thead>
-            <tr>
-              <th scope="col">Produit</th>
-              <th scope="col">Qté</th>
-              <th scope="col">Rayon (€/u)</th>
-              <th scope="col">Ticket (€/u) & Δ</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for I in PURCHASED_TODAY %}
-            {% set delta = I.price_delta if I.price_delta is not none else I.computed_delta %}
-            <tr class="{% if delta is not none and delta > 0.009 %}warn{% elif delta is not none and delta < -0.009 %}ok{% endif %}">
-              <td>
-                <div class="mono">{{ I.product_name }}</div>
-                {% if I.store %}<small class="muted">🏪 {{ I.store }}</small>{% endif %}
-              </td>
-              <td>{{ I.qty_bought if I.qty_bought is not none else I.qty }} {{ I.unit or I.product_unit or '' }}</td>
-              <td>{{ I.shelf_unit_price is not none and ('%.2f'|format(I.shelf_unit_price)) or '—' }}</td>
-              <td>
-                <form method="post" action="{{ BASE }}shopping/item/ticket_price" class="inline">
-                  <input type="hidden" name="item_id" value="{{ I.id }}">
-                  <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
-                  <label class="sr-only" for="ticket-{{ I.id }}">Prix ticket</label>
-                  <input id="ticket-{{ I.id }}" class="input xs" type="number" step="0.01" min="0"
-                    name="ticket_unit_price" value="{{ I.ticket_unit_price if I.ticket_unit_price is not none }}">
-                  <button class="btn xs">OK</button>
-                </form>
-                {% if delta is not none %}<small class="muted">Δ {{ '%.2f'|format(delta) }} €</small>{% endif %}
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </section>
-  {% endif %}
-
+  {# Actions #}
+  <div class="sh-item-actions">
+    {% if not I.is_checked %}
+    <button class="btn xs ok" data-buy-panel="{{ I.id }}" title="Enregistrer l'achat">Acheter</button>
+    {% endif %}
+    <form method="post" action="{{ BASE }}shopping/item/delete" style="display:inline"
+      onsubmit="return confirm('Supprimer {{ I.product_name }} ?');">
+      <input type="hidden" name="item_id" value="{{ I.id }}">
+      <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
+      <button class="btn xs danger" type="submit" title="Supprimer">🗑</button>
+    </form>
+  </div>
 </div>
 
-<!-- Dialog : Envoyer en stock -->
+{# Panneau Acheter inline (caché par défaut) #}
+{% if not I.is_checked %}
+<div id="bp-{{ I.id }}" class="sh-buy-panel" hidden
+  data-shelf-days="{{ I.product_shelf_days }}"
+  data-no-expiry="{{ I.product_no_expiry }}">
+  <form method="post" action="{{ BASE }}shopping/item/mark_bought">
+    <input type="hidden" name="item_id" value="{{ I.id }}">
+    <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
+
+    <div>
+      <label>Qté achetée <span style="font-weight:400;opacity:.6">(prévu {{ I.qty }})</span></label>
+      <input class="bp-qty" type="number" name="qty_bought" step="0.01" min="0"
+        value="{{ I.qty_bought if I.qty_bought is not none else I.qty }}">
+    </div>
+
+    <div>
+      <label>Magasin</label>
+      <input class="bp-store" type="text" name="store" list="french-stores"
+        value="{{ I.store or '' }}" placeholder="Lidl, Carrefour…">
+    </div>
+
+    <div>
+      <label>Prix rayon (€/u)</label>
+      <input type="number" name="shelf_unit_price" step="0.01" min="0"
+        value="{{ I.shelf_unit_price if I.shelf_unit_price is not none else '' }}">
+    </div>
+
+    <div>
+      <label>Prix ticket (€/u)</label>
+      <input type="number" name="ticket_unit_price" step="0.01" min="0"
+        value="{{ I.ticket_unit_price if I.ticket_unit_price is not none else '' }}">
+    </div>
+
+    {% if not I.product_no_expiry %}
+    <div>
+      <label>DLC / DDM</label>
+      <input class="bp-dlc" type="date" name="best_before"
+        value="{{ I.best_before or '' }}">
+    </div>
+    {% else %}
+    <div></div>
+    {% endif %}
+
+    <div>
+      <label>Emplacement</label>
+      <select name="location_id">
+        <option value="">— Choisir —</option>
+        {% for loc in LOCATIONS %}
+        <option value="{{ loc.id }}"
+          {% if I.location_id and I.location_id == loc.id %}selected
+          {% elif not I.location_id and I.product_default_location_id == loc.id %}selected
+          {% endif %}>
+          {{ loc.name }}{% if loc.is_freezer %} ❄️{% endif %}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="sh-buy-actions sh-full">
+      <button class="btn ok" type="submit">✅ Valider l'achat</button>
+      <button type="button" class="btn secondary" data-close-panel>Annuler</button>
+    </div>
+  </form>
+</div>
+{% endif %}
+{% endmacro %}
+
+{# ── Regroupement par catégorie ──────────────────────────────────────────── #}
+{% set cat_order = [
+  "Fruits & légumes","Viande","Poisson & fruits de mer","Produits laitiers",
+  "Oeufs","Charcuterie","Fromages","Boulangerie & pâtisserie",
+  "Céréales, pâtes & riz","Épicerie salée","Épicerie sucrée",
+  "Conserves & bocaux","Condiments & sauces","Huiles & vinaigres",
+  "Boissons","Surgelés","Bio / Sans gluten",
+  "Hygiène & beauté","Entretien & nettoyage","Bébé","Animaux","Divers"
+] %}
+{% set CAT_EMOJI = {
+  "Fruits & légumes":"🥦","Viande":"🥩","Poisson & fruits de mer":"🐟",
+  "Produits laitiers":"🥛","Oeufs":"🥚","Charcuterie":"🥓","Fromages":"🧀",
+  "Boulangerie & pâtisserie":"🥖","Céréales, pâtes & riz":"🍝",
+  "Épicerie salée":"🧂","Épicerie sucrée":"🍫","Conserves & bocaux":"🫙",
+  "Condiments & sauces":"🫙","Huiles & vinaigres":"🫒","Boissons":"🧃",
+  "Surgelés":"❄️","Bio / Sans gluten":"🌿","Hygiène & beauté":"🧴",
+  "Entretien & nettoyage":"🧹","Bébé":"👶","Animaux":"🐾","Divers":"📦"
+} %}
+
+{# Construire le dict catégorie → articles #}
+{% set cat_items = {} %}
+{% for I in ITEMS %}
+  {% set cat = I.category or "Divers" %}
+  {% if cat not in cat_items %}{% set _ = cat_items.update({cat: []}) %}{% endif %}
+  {% set _ = cat_items[cat].append(I) %}
+{% endfor %}
+
+{# Compteurs globaux #}
+{% set ns = namespace(total=0, done=0) %}
+{% for I in ITEMS %}
+  {% set ns.total = ns.total + 1 %}
+  {% if I.is_checked %}{% set ns.done = ns.done + 1 %}{% endif %}
+{% endfor %}
+
+{# ── Header sticky ───────────────────────────────────────────────────────── #}
+<div class="sh-header">
+  <div class="sh-title">
+    🛒
+    <select class="sh-list-select" onchange="window.location.href='{{ BASE }}shopping?list='+this.value">
+      {% for L in LISTS %}
+      <option value="{{ L.id }}" {% if L.id == ACTIVE_LIST_ID %}selected{% endif %}>
+        {{ L.emoji or '🛒' }} {{ L.name }} ({{ L.to_buy or 0 }})
+      </option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="sh-actions">
+    {% if TO_COMMIT > 0 %}
+    <button class="btn ok sm" onclick="document.getElementById('dlg-commit').showModal()">
+      📦 En stock ({{ TO_COMMIT }})
+    </button>
+    {% endif %}
+    <form method="post" action="{{ BASE }}shopping/list/generate" style="display:inline"
+      onsubmit="return confirm('Ajouter les produits en rupture ou sous le seuil minimum ?');">
+      <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
+      <button class="btn secondary sm" type="submit">⚡ Générer</button>
+    </form>
+    <form method="post" action="{{ BASE }}shopping/item/delete_checked" style="display:inline"
+      onsubmit="return confirm('Supprimer tous les articles cochés ?');">
+      <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
+      <button class="btn warn sm" type="submit">🧹 Nettoyer</button>
+    </form>
+    <button class="btn secondary sm" onclick="document.getElementById('dlg-columns').showModal()" title="Colonnes affichées">⚙️</button>
+    <button class="btn secondary sm" id="btn-export-csv" title="Export CSV">🗂️</button>
+    <button class="btn secondary sm" onclick="window.print()" title="Imprimer">🖨️</button>
+  </div>
+</div>
+
+{# ── Barre contextuelle ──────────────────────────────────────────────────── #}
+<div class="sh-bar">
+  <div class="sh-store-wrap">
+    <label for="session-store">🏪</label>
+    <input id="session-store" type="text" placeholder="Magasin de la session…"
+      list="french-stores"
+      title="Pré-remplit le Magasin sur chaque article — modifiable par article">
+  </div>
+  <div class="sh-stats">
+    <span>{{ ns.total - ns.done }} à acheter</span>
+    <span>·</span>
+    <span>{{ ns.done }} acheté{{ ns.done > 1 and "s" or "" }}</span>
+    {% if ANOMALIES > 0 %}
+    <span>· <span style="color:var(--toast-warn)">Δ {{ "%.2f"|format(TOTAL_DELTA) }} €</span></span>
+    {% endif %}
+  </div>
+</div>
+
+{# ── Formulaire ajout (accordéon) ────────────────────────────────────────── #}
+<details class="sh-add-card">
+  <summary>
+    <span>➕ Ajouter un article</span>
+    <svg class="sh-add-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+  </summary>
+  <form method="post" action="{{ BASE }}shopping/item/add" class="sh-add-body">
+    <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
+    <div>
+      <input id="sh-prod-display" list="sh-products" name="product_id_display"
+        autocomplete="off" placeholder="Chercher un produit…" required
+        style="width:100%;box-sizing:border-box;min-height:40px;border:1px solid var(--line);border-radius:9px;background:transparent;color:inherit;padding:4px 10px;font-size:.875rem">
+      <input type="hidden" id="sh-prod-id" name="product_id">
+      <datalist id="sh-products">
+        {% for P in PRODUCTS %}
+        <option value="{{ P.id }} — {{ P.name }}{% if P.unit %} ({{ P.unit }}){% endif %}{% if P.barcode %} [{{ P.barcode }}]{% endif %}"></option>
+        {% endfor %}
+      </datalist>
+    </div>
+    <div>
+      <input type="number" name="qty" step="0.01" min="0" value="1" placeholder="Qté"
+        style="width:100%;box-sizing:border-box;min-height:40px;border:1px solid var(--line);border-radius:9px;background:transparent;color:inherit;padding:4px 10px;font-size:.875rem">
+    </div>
+    <div class="sh-add-note">
+      <input type="text" name="note" placeholder="Note (marque, format…)"
+        style="width:100%;box-sizing:border-box;min-height:40px;border:1px solid var(--line);border-radius:9px;background:transparent;color:inherit;padding:4px 10px;font-size:.875rem">
+    </div>
+    <div class="sh-add-btn">
+      <button class="btn ok" type="submit" style="width:100%;min-height:40px">Ajouter</button>
+    </div>
+  </form>
+  <div style="padding:0 14px 10px;font-size:.8rem;color:var(--text-muted)">
+    Produit absent ? <a href="{{ BASE }}products" style="color:inherit;text-decoration:underline">Créer une fiche produit</a>
+  </div>
+</details>
+
+{# ── Grille catégories ───────────────────────────────────────────────────── #}
+{% if ITEMS|length == 0 %}
+<div style="text-align:center;padding:48px 0;color:var(--text-muted)">
+  <div style="font-size:2.5rem;margin-bottom:10px">🛒</div>
+  <div style="font-size:1rem;font-weight:500">Aucun article dans cette liste.</div>
+  <div style="font-size:.85rem;margin-top:6px">Ajoutez un produit ou utilisez <strong>⚡ Générer</strong> pour remplir depuis les ruptures.</div>
+</div>
+{% else %}
+<div class="sh-grid">
+  {# Parcours dans l'ordre défini, puis catégories inconnues #}
+  {% set seen_cats = [] %}
+  {% for cat in cat_order %}
+    {% if cat in cat_items %}
+      {% set _ = seen_cats.append(cat) %}
+      {% set pending = [] %}
+      {% set checked = [] %}
+      {% for I in cat_items[cat] %}
+        {% if not I.is_checked %}{% set _ = pending.append(I) %}
+        {% else %}{% set _ = checked.append(I) %}{% endif %}
+      {% endfor %}
+      <div class="sh-cat-card">
+        <div class="sh-cat-head">
+          <span>{{ CAT_EMOJI.get(cat, "📦") }}</span>
+          <span>{{ cat }}</span>
+          <span class="sh-cat-count">
+            {{ pending|length }} restant{{ pending|length > 1 and "s" or "" }}{% if checked|length %} · {{ checked|length }} ✓{% endif %}
+          </span>
+        </div>
+        {% for I in pending %}{{ render_item(I) }}{% endfor %}
+        {% if checked|length %}
+        <div class="sh-checked-sep">Achetés</div>
+        {% for I in checked %}{{ render_item(I) }}{% endfor %}
+        {% endif %}
+      </div>
+    {% endif %}
+  {% endfor %}
+  {# Catégories hors liste standard #}
+  {% for cat, items in cat_items.items() %}
+    {% if cat not in seen_cats %}
+      {% set pending = [] %}
+      {% set checked = [] %}
+      {% for I in items %}
+        {% if not I.is_checked %}{% set _ = pending.append(I) %}
+        {% else %}{% set _ = checked.append(I) %}{% endif %}
+      {% endfor %}
+      <div class="sh-cat-card">
+        <div class="sh-cat-head">
+          <span>📦</span>
+          <span>{{ cat }}</span>
+          <span class="sh-cat-count">
+            {{ pending|length }} restant{{ pending|length > 1 and "s" or "" }}{% if checked|length %} · {{ checked|length }} ✓{% endif %}
+          </span>
+        </div>
+        {% for I in pending %}{{ render_item(I) }}{% endfor %}
+        {% if checked|length %}
+        <div class="sh-checked-sep">Achetés</div>
+        {% for I in checked %}{{ render_item(I) }}{% endfor %}
+        {% endif %}
+      </div>
+    {% endif %}
+  {% endfor %}
+</div>
+{% endif %}
+
+{# ── Section ticket du jour ──────────────────────────────────────────────── #}
+{% if PURCHASED_TODAY and PURCHASED_TODAY|length > 0 %}
+<div class="sh-ticket-card">
+  <div class="sh-ticket-head">
+    <span>🧾 Contrôle ticket (aujourd'hui)</span>
+    <span class="sh-ticket-stats">
+      {{ ANOMALIES }} anomalie{{ ANOMALIES > 1 and "s" or "" }} · Δ {{ "%.2f"|format(TOTAL_DELTA) }} €
+    </span>
+  </div>
+  <div class="sh-ticket-body">
+    {% for I in PURCHASED_TODAY %}
+    {% set delta = I.price_delta if I.price_delta is not none else I.computed_delta %}
+    <div class="sh-ticket-row {% if delta is not none and delta > 0.009 %}warn{% elif delta is not none and delta < -0.009 %}ok{% endif %}">
+      <div>
+        <div style="font-weight:500">{{ I.product_name }}</div>
+        {% if I.store %}<div style="font-size:.75rem;color:var(--text-muted)">🏪 {{ I.store }}</div>{% endif %}
+      </div>
+      <div style="color:var(--text-muted);font-size:.8rem">
+        {{ I.qty_bought if I.qty_bought is not none else I.qty }} {{ I.unit or I.product_unit or "" }}
+      </div>
+      <div class="sh-t-shelf" style="color:var(--text-muted);font-size:.8rem">
+        {{ "%.2f"|format(I.shelf_unit_price) ~ " €" if I.shelf_unit_price is not none else "—" }}
+      </div>
+      <div class="sh-t-ticket">
+        <form method="post" action="{{ BASE }}shopping/item/ticket_price" style="display:flex;gap:4px;align-items:center">
+          <input type="hidden" name="item_id" value="{{ I.id }}">
+          <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
+          <input type="number" step="0.01" min="0" name="ticket_unit_price"
+            value="{{ I.ticket_unit_price if I.ticket_unit_price is not none else "" }}"
+            placeholder="0.00">
+          <button class="btn xs secondary" type="submit">OK</button>
+        </form>
+        {% if delta is not none %}
+        <div style="font-size:.72rem;color:var(--text-muted);margin-top:2px">Δ {{ "%+.2f"|format(delta) }} €</div>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{# ── Datalist enseignes françaises ───────────────────────────────────────── #}
+<datalist id="french-stores">
+  <option value="E.Leclerc"><option value="Leclerc Drive">
+  <option value="Carrefour"><option value="Carrefour Market"><option value="Carrefour Express">
+  <option value="Carrefour City"><option value="Carrefour Contact"><option value="Carrefour Drive">
+  <option value="Auchan"><option value="Auchan Supermarché"><option value="Auchan Drive">
+  <option value="Hyper U"><option value="Super U"><option value="U Express">
+  <option value="Utile"><option value="Marché U"><option value="U Drive">
+  <option value="Intermarché"><option value="Intermarché Express">
+  <option value="Intermarché Contact"><option value="Intermarché Drive">
+  <option value="Géant Casino"><option value="Casino Supermarché">
+  <option value="Monoprix"><option value="Monop'"><option value="Franprix">
+  <option value="Cora"><option value="Bi1"><option value="Match"><option value="Supeco">
+  <option value="Lidl"><option value="Aldi"><option value="Netto">
+  <option value="Leader Price"><option value="Action"><option value="Normal"><option value="Penny Market">
+  <option value="Biocoop"><option value="Naturalia"><option value="La Vie Claire">
+  <option value="Bio c'Bon"><option value="Satoriz"><option value="Biomonde"><option value="L'Eau Vive">
+  <option value="Grand Frais"><option value="Picard"><option value="Thiriet">
+  <option value="Metro"><option value="Costco"><option value="Promocash"><option value="Colruyt">
+  <option value="Marché local"><option value="Producteur local"><option value="Chronodrive">
+</datalist>
+
+</div>{# fin .wrap #}
+
+{# ── Dialog : Envoyer en stock ───────────────────────────────────────────── #}
 <dialog id="dlg-commit">
-  <div style="min-width:min(440px,94vw);display:grid;gap:16px">
+  <div style="display:grid;gap:16px;min-width:min(400px,94vw)">
     <h3 style="margin:0">📦 Envoyer les courses en stock</h3>
-    <p style="margin:0">
-      <strong>{{ TO_COMMIT }} article{{ TO_COMMIT > 1 and 's' or '' }}</strong>
-      coché{{ TO_COMMIT > 1 and 's' or '' }} vont être ajoutés à votre stock.
-    </p>
-    <p class="muted" style="margin:0;font-size:.875rem;">
+    <p style="margin:0"><strong>{{ TO_COMMIT }} article{{ TO_COMMIT > 1 and "s" or "" }}</strong> coché{{ TO_COMMIT > 1 and "s" or "" }} vont être ajoutés au stock.</p>
+    <p style="margin:0;font-size:.85rem;color:var(--text-muted)">
       ⚠️ Les articles sans emplacement sélectionné seront ignorés.<br>
-      ✅ Les articles déjà envoyés (badge vert) ne sont pas re-envoyés.
+      ✅ Les articles déjà envoyés ne sont pas re-envoyés.
     </p>
-    <form method="post" action="{{ BASE }}shopping/commit" style="display:flex;gap:10px;justify-content:flex-end">
+    <form method="post" action="{{ BASE }}shopping/commit" style="display:flex;gap:8px;justify-content:flex-end">
       <input type="hidden" name="list_id" value="{{ ACTIVE_LIST_ID }}">
       <button type="button" class="btn secondary" onclick="document.getElementById('dlg-commit').close()">Annuler</button>
       <button class="btn ok" type="submit">Confirmer</button>
     </form>
   </div>
 </dialog>
-<!-- Liste des enseignes françaises (datalist partagé) -->
-<datalist id="french-stores">
-  <!-- Hypermarchés -->
-  <option value="E.Leclerc">
-  <option value="Leclerc Drive">
-  <option value="Carrefour">
-  <option value="Carrefour Drive">
-  <option value="Auchan">
-  <option value="Auchan Drive">
-  <option value="Hyper U">
-  <option value="Géant Casino">
-  <option value="Cora">
-  <option value="Bi1">
-  <!-- Supermarchés -->
-  <option value="Carrefour Market">
-  <option value="Carrefour Express">
-  <option value="Carrefour City">
-  <option value="Carrefour Contact">
-  <option value="Intermarché">
-  <option value="Intermarché Express">
-  <option value="Intermarché Contact">
-  <option value="Intermarché Drive">
-  <option value="Super U">
-  <option value="U Express">
-  <option value="Utile">
-  <option value="Marché U">
-  <option value="U Drive">
-  <option value="Casino Supermarché">
-  <option value="Monoprix">
-  <option value="Monop'">
-  <option value="Franprix">
-  <option value="Auchan Supermarché">
-  <option value="Match">
-  <option value="Supeco">
-  <!-- Hard discount -->
-  <option value="Lidl">
-  <option value="Aldi">
-  <option value="Netto">
-  <option value="Leader Price">
-  <option value="Action">
-  <option value="Normal">
-  <option value="Penny Market">
-  <!-- Bio / Organic -->
-  <option value="Biocoop">
-  <option value="Naturalia">
-  <option value="La Vie Claire">
-  <option value="Bio c'Bon">
-  <option value="Satoriz">
-  <option value="Biomonde">
-  <option value="L'Eau Vive">
-  <!-- Spécialisés -->
-  <option value="Grand Frais">
-  <option value="Picard">
-  <option value="Thiriet">
-  <option value="Metro">
-  <option value="Costco">
-  <option value="Promocash">
-  <option value="Colruyt">
-  <!-- Marché / autres -->
-  <option value="Marché local">
-  <option value="Producteur local">
-  <option value="Amazon Fresh">
-  <option value="Chronodrive">
-</datalist>
+
+{# ── Dialog : Colonnes affichées ─────────────────────────────────────────── #}
+<dialog id="dlg-columns">
+  <div style="display:grid;gap:4px;min-width:min(340px,94vw)">
+    <h3 style="margin:0 0 12px">⚙️ Colonnes affichées</h3>
+    <div class="sh-col-toggle">
+      <label for="col-qty">Quantité</label>
+      <input type="checkbox" id="col-qty" data-col="qty">
+    </div>
+    <div class="sh-col-toggle">
+      <label for="col-store">Magasin</label>
+      <input type="checkbox" id="col-store" data-col="store">
+    </div>
+    <div class="sh-col-toggle">
+      <label for="col-price">Prix</label>
+      <input type="checkbox" id="col-price" data-col="price">
+    </div>
+    <div class="sh-col-toggle">
+      <label for="col-dlc">DLC / DDM</label>
+      <input type="checkbox" id="col-dlc" data-col="dlc">
+    </div>
+    <div class="sh-col-toggle">
+      <label for="col-note">Note</label>
+      <input type="checkbox" id="col-note" data-col="note">
+    </div>
+    <div class="sh-col-toggle">
+      <label for="col-stock">Badge "en stock"</label>
+      <input type="checkbox" id="col-stock" data-col="stock">
+    </div>
+    <div style="margin-top:14px;display:flex;justify-content:flex-end">
+      <button class="btn secondary" onclick="document.getElementById('dlg-columns').close()">Fermer</button>
+    </div>
+  </div>
+</dialog>
 
 {% endblock %}
 
 {% block scripts %}
 <script>
-  // Normalisation des actions (ingress)
-  (function () {
-    const BASE = "{{ BASE }}";
-    function joinBase(path) {
-      path = String(path || "").replace(/^\//, "");
-      let url = BASE + path;
-      url = url.replace(/([^:]\/)\/+/g, "$1");
-      return url;
+(function () {
+  "use strict";
+  const BASE = "{{ BASE }}";
+
+  /* ── Normalisation des actions (ingress) ─────────────────────────────── */
+  function joinBase(path) {
+    path = String(path || "").replace(/^\//, "");
+    return (BASE + path).replace(/([^:]\/)\/+/g, "$1");
+  }
+  document.querySelectorAll("form").forEach(form => {
+    let act = form.getAttribute("action") || "";
+    if (!/^https?:\/\//i.test(act)) {
+      const m = act.match(/shopping\/[a-z_\/]+$/i);
+      if (m) act = m[0];
+      act = act.replace(/^\/+/, "");
+      if (/^shopping(\/|$)/.test(act)) form.setAttribute("action", joinBase(act));
     }
-    document.querySelectorAll("form").forEach(form => {
-      let act = form.getAttribute("action") || "";
-      if (!/^https?:\/\//i.test(act)) {
-        const m = act.match(/shopping\/[a-z_\/]+$/i);
-        if (m) act = m[0];
-        act = act.replace(/^\/+/, "");
-        if (/^shopping(\/|$)/.test(act)) form.setAttribute("action", joinBase(act));
-      }
+  });
+
+  /* ── Colonnes toggleables (localStorage) ────────────────────────────── */
+  const COL_KEY = "domovra_sh_cols";
+  const COL_DEFS = { qty:true, store:true, price:true, dlc:true, note:true, stock:true };
+  let cols = { ...COL_DEFS };
+  try { const s = localStorage.getItem(COL_KEY); if (s) cols = { ...COL_DEFS, ...JSON.parse(s) }; } catch(e) {}
+
+  function applyColState() {
+    Object.keys(COL_DEFS).forEach(key => {
+      document.querySelectorAll("[data-m='" + key + "']").forEach(el => {
+        el.style.display = cols[key] ? "" : "none";
+      });
     });
-  })();
+  }
 
-  // Toggle panneaux "Acheter"
-  (function () {
-    const TODAY = new Date().toISOString().slice(0, 10);
-
-    function openBuyPanel(row) {
-      if (!row) return;
-      row.hidden = false;
-
-      // Pré-remplir DLC si vide
-      const bbInput = row.querySelector(".buy-bb-input");
-      if (bbInput && !bbInput.value) {
-        const form = row.querySelector("form[data-shelf-days]") || row;
-        const shelfDays = parseInt(form.dataset.shelfDays || "0", 10);
-        const noExpiry = parseInt(form.dataset.noExpiry || "0", 10);
-        if (!noExpiry && shelfDays > 0) {
-          const d = new Date();
-          d.setDate(d.getDate() + shelfDays);
-          bbInput.value = d.toISOString().slice(0, 10);
-        }
-      }
-
-      // Pré-remplir magasin de session si vide
-      const sessionStore = document.getElementById("session-store");
-      if (sessionStore && sessionStore.value) {
-        row.querySelectorAll(".buy-store-input").forEach(inp => {
-          if (!inp.value) inp.value = sessionStore.value;
-        });
-      }
-
-      row.querySelector("input,button,select,textarea")?.focus({ preventScroll: true });
-    }
-
-    document.addEventListener("click", (e) => {
-      const btn = e.target.closest("[data-buy], [data-closebuy]");
-      if (!btn) return;
-      const sel = btn.getAttribute("data-buy") || btn.getAttribute("data-closebuy");
-      const row = document.querySelector(sel);
-      if (!row) return;
-      if (btn.hasAttribute("data-buy")) {
-        if (row.hidden) {
-          openBuyPanel(row);
-        } else {
-          row.hidden = true;
-        }
-      } else {
-        row.hidden = true;
-      }
+  document.querySelectorAll("#dlg-columns input[data-col]").forEach(cb => {
+    const col = cb.dataset.col;
+    cb.checked = cols[col] !== false;
+    cb.addEventListener("change", function() {
+      cols[col] = this.checked;
+      try { localStorage.setItem(COL_KEY, JSON.stringify(cols)); } catch(e) {}
+      applyColState();
     });
+  });
+  applyColState();
 
-    document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") {
-        document.querySelectorAll(".buy-row:not([hidden]), .mobile-buy:not([hidden])").forEach(el => el.hidden = true);
-      }
-    });
-  })();
-
-  // Session store : pré-remplir les champs magasin ouverts
-  (function () {
-    const sessionInput = document.getElementById("session-store");
-    if (!sessionInput) return;
-    // Restaurer depuis localStorage
+  /* ── Session store ───────────────────────────────────────────────────── */
+  const sessionInput = document.getElementById("session-store");
+  if (sessionInput) {
     const saved = localStorage.getItem("domovra_session_store");
     if (saved) sessionInput.value = saved;
-
-    sessionInput.addEventListener("input", function () {
+    sessionInput.addEventListener("input", function() {
       localStorage.setItem("domovra_session_store", this.value);
-      // Mettre à jour les panneaux déjà ouverts
-      document.querySelectorAll(".buy-row:not([hidden]) .buy-store-input, .mobile-buy:not([hidden]) .buy-store-input")
-        .forEach(inp => { if (!inp.dataset.manuallySet) inp.value = this.value; });
+      document.querySelectorAll(".sh-buy-panel:not([hidden]) .bp-store").forEach(inp => {
+        if (!inp.dataset.manuallySet) inp.value = this.value;
+      });
     });
-
-    // Marquer manuellement modifié
-    document.addEventListener("input", (e) => {
-      if (e.target.classList.contains("buy-store-input") && e.target !== sessionInput) {
+    document.addEventListener("input", e => {
+      if (e.target.classList.contains("bp-store") && e.target !== sessionInput)
         e.target.dataset.manuallySet = "1";
-      }
     });
-  })();
+  }
 
-  // Ajout: transformer "123 — Nom (unité)" -> product_id
-  (function () {
-    const form = document.querySelector("form[action*='shopping/item/add']");
-    if (!form) return;
-    const disp = form.querySelector("input[name='product_id_display']");
-    const hid = form.querySelector("#product_id_hidden");
-    const unit = form.querySelector("input[name='unit']");
+  /* ── Panneau Acheter ─────────────────────────────────────────────────── */
+  function prefillPanel(panel) {
+    const bbInput = panel.querySelector(".bp-dlc");
+    if (bbInput && !bbInput.value) {
+      const days  = parseInt(panel.dataset.shelfDays || "0", 10);
+      const noExp = parseInt(panel.dataset.noExpiry  || "0", 10);
+      if (!noExp && days > 0) {
+        const d = new Date();
+        d.setDate(d.getDate() + days);
+        bbInput.value = d.toISOString().slice(0, 10);
+      }
+    }
+    const storeInput = panel.querySelector(".bp-store");
+    if (storeInput && !storeInput.value && sessionInput?.value)
+      storeInput.value = sessionInput.value;
+  }
 
+  document.addEventListener("click", e => {
+    const btn = e.target.closest("[data-buy-panel]");
+    if (!btn) return;
+    const id = btn.dataset.buyPanel;
+    const panel = document.getElementById("bp-" + id);
+    if (!panel) return;
+    const wasHidden = panel.hidden;
+    document.querySelectorAll(".sh-buy-panel").forEach(p => p.hidden = true);
+    if (wasHidden) {
+      panel.hidden = false;
+      prefillPanel(panel);
+      panel.querySelector("input,select")?.focus({ preventScroll: true });
+    }
+  });
+
+  document.addEventListener("click", e => {
+    if (e.target.closest("[data-close-panel]")) {
+      e.target.closest(".sh-buy-panel")?.setAttribute("hidden", "");
+    }
+  });
+
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape")
+      document.querySelectorAll(".sh-buy-panel:not([hidden])").forEach(p => p.hidden = true);
+  });
+
+  /* ── Checkbox toggle ─────────────────────────────────────────────────── */
+  document.querySelectorAll(".sh-check").forEach(cb => {
+    cb.addEventListener("change", function() {
+      const form = document.getElementById("toggle-form-" + this.dataset.itemId);
+      if (form) form.submit();
+    });
+  });
+
+  /* ── Ajout produit : extraire product_id ─────────────────────────────── */
+  const addForm = document.querySelector("form[action*='shopping/item/add']");
+  if (addForm) {
+    const disp = addForm.querySelector("#sh-prod-display");
+    const hid  = addForm.querySelector("#sh-prod-id");
     function extract() {
-      const s = String(disp.value || "");
-      const mId = s.match(/^(\d+)\b/);
-      if (mId) hid.value = mId[1];
-      const mUnit = s.match(/\(([^)]+)\)/);
-      if (mUnit && unit && !unit.value) unit.value = mUnit[1];
+      const m = String(disp?.value || "").match(/^(\d+)\b/);
+      if (m) hid.value = m[1];
     }
     disp?.addEventListener("change", extract);
-    disp?.addEventListener("blur", extract);
-    form.addEventListener("submit", (e) => {
+    disp?.addEventListener("blur",   extract);
+    addForm.addEventListener("submit", e => {
       extract();
       if (!hid.value) {
         e.preventDefault();
-        window.showToast && window.showToast("Choisis un produit dans la liste.", "warn");
-        disp.focus();
+        window.showToast?.("Choisis un produit dans la liste.", "warn");
+        disp?.focus();
       }
     });
-  })();
+  }
 
-  // Export CSV
-  (function () {
-    document.getElementById("btn-export-csv")?.addEventListener("click", function () {
-      const rows = [];
-      rows.push(["Produit", "Qté prévue", "Qté achetée", "Unité", "Note", "Magasin", "Prix rayon", "Prix ticket", "DLC", "Emplacement", "Coché", "En stock"]);
-      document.querySelectorAll(".table tbody tr:not(.buy-row)").forEach(tr => {
-        const tds = tr.querySelectorAll("td");
-        if (tds.length < 3) return;
-        const product = tds[0].querySelector("strong")?.textContent?.trim() || "";
-        const qtyCell = tds[1]?.textContent?.trim() || "";
-        const note = tds[2]?.textContent?.trim() || "";
-        const isChecked = tr.classList.contains("checked") ? "oui" : "non";
-        const isCommitted = tds[0].querySelector(".badge-committed") ? "oui" : "non";
-        rows.push([product, qtyCell, "", "", note, "", "", "", "", "", isChecked, isCommitted]);
-      });
-      const csv = rows.map(r => r.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(",")).join("\n");
-      const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = "liste-courses.csv";
-      a.click();
-      URL.revokeObjectURL(a.href);
-      window.showToast?.("Export CSV téléchargé.", "ok");
+  /* ── Export CSV ──────────────────────────────────────────────────────── */
+  document.getElementById("btn-export-csv")?.addEventListener("click", () => {
+    const rows = [["Catégorie","Produit","Qté","Magasin","Prix","DLC","Note","Acheté","En stock"]];
+    document.querySelectorAll(".sh-item").forEach(item => {
+      const cat   = item.closest(".sh-cat-card")?.querySelector(".sh-cat-head span:nth-child(2)")?.textContent?.trim() || "";
+      const name  = item.querySelector(".sh-item-name")?.textContent?.trim() || "";
+      const qty   = item.querySelector("[data-m='qty']")?.textContent?.trim() || "";
+      const store = item.querySelector("[data-m='store']")?.textContent?.trim() || "";
+      const price = item.querySelector("[data-m='price']")?.textContent?.trim() || "";
+      const dlc   = item.querySelector("[data-m='dlc']")?.textContent?.trim() || "";
+      const note  = item.querySelector("[data-m='note']")?.textContent?.trim() || "";
+      const done  = item.classList.contains("is-checked") ? "oui" : "non";
+      const stock = item.querySelector("[data-m='stock']") ? "oui" : "non";
+      rows.push([cat, name, qty, store, price, dlc, note, done, stock]);
     });
-  })();
+    const csv = rows.map(r => r.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(",")).join("\n");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" }));
+    a.download = "liste-courses.csv";
+    a.click();
+    URL.revokeObjectURL(a.href);
+    window.showToast?.("Export CSV téléchargé.", "ok");
+  });
 
-  // Toast via ?toast=
-  (function () {
+  /* ── Toasts ──────────────────────────────────────────────────────────── */
+  (function() {
     const u = new URL(window.location);
     const t = u.searchParams.get("toast");
     const committed = u.searchParams.get("committed") || "0";
-    const skipped = u.searchParams.get("skipped") || "0";
+    const skipped   = u.searchParams.get("skipped")   || "0";
     if (!t) return;
     const map = {
-      added_list:        ["Liste créée.", "ok"],
-      renamed_list:      ["Liste renommée.", "ok"],
-      deleted_list:      ["Liste supprimée.", "warn"],
-      added_item:        ["Produit ajouté.", "ok"],
-      marked_bought:     ["Achat enregistré.", "ok"],
-      ticket_ok:         ["Prix ticket enregistré.", "ok"],
-      toggled:           ["Statut mis à jour.", "ok"],
-      deleted_item:      ["Item supprimé.", "warn"],
-      generated:         ["Liste mise à jour avec les produits en rupture.", "ok"],
-      cleaned:           ["Articles cochés supprimés.", "warn"],
-      committed:         [committed + " article(s) ajouté(s) au stock.", "ok"],
-      commit_partial:    [committed + " ajouté(s) au stock, " + skipped + " ignoré(s) (emplacement manquant).", "warn"],
-      commit_no_location:["Aucun article envoyé : emplacement manquant sur tous les articles cochés.", "error"],
-      error:             ["Une erreur est survenue.", "error"]
+      added_list:         ["Liste créée.", "ok"],
+      renamed_list:       ["Liste renommée.", "ok"],
+      deleted_list:       ["Liste supprimée.", "warn"],
+      added_item:         ["Produit ajouté.", "ok"],
+      marked_bought:      ["Achat enregistré.", "ok"],
+      ticket_ok:          ["Prix ticket enregistré.", "ok"],
+      toggled:            ["Statut mis à jour.", "ok"],
+      deleted_item:       ["Article supprimé.", "warn"],
+      generated:          ["Liste mise à jour depuis les ruptures.", "ok"],
+      cleaned:            ["Articles cochés supprimés.", "warn"],
+      committed:          [committed + " article(s) ajouté(s) au stock.", "ok"],
+      commit_partial:     [committed + " ajouté(s), " + skipped + " ignoré(s) (emplacement manquant).", "warn"],
+      commit_no_location: ["Aucun article envoyé : emplacement manquant.", "error"],
+      error:              ["Une erreur est survenue.", "error"],
     };
     const p = map[t];
-    if (p && window.showToast) window.showToast(p[0], p[1]);
+    if (p) window.showToast?.(p[0], p[1]);
     u.searchParams.delete("toast");
     u.searchParams.delete("committed");
     u.searchParams.delete("skipped");
     history.replaceState({}, "", u);
   })();
+
+})();
 </script>
 {% endblock %}

@@ -180,6 +180,7 @@ def fetch_items(conn, list_id: int, status: Optional[str] = None) -> List[Dict[s
         SELECT I.*,
                P.name AS product_name,
                P.unit AS product_unit,
+               COALESCE(P.category, 'Divers') AS category,
                COALESCE(P.default_location_id, 0) AS product_default_location_id,
                COALESCE(P.default_shelf_life_days, 90) AS product_shelf_days,
                COALESCE(P.no_expiry, 0) AS product_no_expiry
@@ -194,6 +195,7 @@ def fetch_items(conn, list_id: int, status: Optional[str] = None) -> List[Dict[s
     rows = [dict(r) for r in cur.fetchall()]
     for r in rows:
         r.setdefault("product_unit", None)
+        r.setdefault("category", "Divers")
         r.setdefault("product_default_location_id", 0)
         r.setdefault("product_shelf_days", 90)
         r.setdefault("product_no_expiry", 0)
