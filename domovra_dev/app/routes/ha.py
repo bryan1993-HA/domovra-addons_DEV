@@ -42,12 +42,6 @@ def _find_activation_column(cols: Set[str]) -> Optional[str]:
 
 
 def _guess_lots_table(conn: sqlite3.Connection) -> Optional[str]:
-    """
-    Trouve la table des lots :
-      - doit avoir best_before
-      - et qty OU quantity
-    Bonus si le nom évoque lot/stock/batch/invent…
-    """
     candidates: List[Tuple[int, str]] = []
     for t in _tables(conn):
         cols = _columns(conn, t)
@@ -67,39 +61,28 @@ def _guess_lots_table(conn: sqlite3.Connection) -> Optional[str]:
     return candidates[0][1]
 
 
-# ---------- Construction FROM/WHERE dynamique (lots “actifs”) ----------------
+# ---------- Construction FROM/WHERE dynamique --------------------------------
 def _build_from_where_for_lots(
     conn: sqlite3.Connection, lots_table: str
 ) -> Tuple[str, str, Tuple]:
-    """
-    Construit FROM/WHERE en ne gardant que les lots *actifs* si les colonnes existent :
-      - status ∈ ('open','active') si L.status existe
-      - ended_on est NULL/'' si L.ended_on existe
-      - qty > 0 si L.qty existe
-      - + jointure produits actifs si possible
-    """
     pcols = _columns(conn, "products") if _table_exists(conn, "products") else set()
     lcols = _columns(conn, lots_table)
 
     p_has_id = "id" in pcols
     l_has_product_id = "product_id" in lcols
-
     p_active_col = _find_activation_column(pcols) if pcols else None
 
     params: List[object] = []
     from_clause = f"{lots_table} AS L"
     where_parts: List[str] = []
 
-    # Filtre d'état “actif” côté lots
     if "status" in lcols:
-        # Par défaut on traite NULL/valeurs non reconnues comme inactives ? Non → on whiteliste open/active
         where_parts.append("COALESCE(L.status, 'open') IN ('open','active')")
     if "ended_on" in lcols:
         where_parts.append("(L.ended_on IS NULL OR L.ended_on = '')")
     if "qty" in lcols:
         where_parts.append("L.qty > 0")
 
-    # Produits actifs via jointure
     if p_has_id and l_has_product_id and p_active_col:
         from_clause += " JOIN products AS P ON P.id = L.product_id"
         where_parts.append(f"P.{p_active_col} = 1")
@@ -110,15 +93,6 @@ def _build_from_where_for_lots(
 
 @router.get("/summary")
 def ha_summary():
-    """
-    Compteurs Home Assistant (uniquement *actifs* quand les colonnes existent) :
-      - products : COUNT(*) FROM products [WHERE active=1 si dispo]
-      - lots     : COUNT(*) FROM <lots actifs>
-      - urgent   : lots actifs avec days_left <= crit_days
-      - soon     : lots actifs avec crit_days < days_left <= warn_days
-
-    days_left = julianday(best_before) - julianday(today)
-    """
     warn_days, crit_days = get_retention_thresholds()
     today = date.today().isoformat()
 
@@ -133,42 +107,40 @@ def ha_summary():
         conn = sqlite3.connect(DB_PATH)
         conn.row_factory = sqlite3.Row
 
-        # ---- PRODUCTS (actifs si possible) -----------------------------------
+        # ---- PRODUCTS --------------------------------------------------------
         if _table_exists(conn, "products"):
             pcols = _columns(conn, "products")
             p_active_col = _find_activation_column(pcols)
             try:
                 if p_active_col:
                     row = conn.execute(
-                        f"SELECT COUNT(*) AS c FROM products WHERE {p_active_col} = 1"
+                        f"SELECT COUNT(*) FROM products WHERE {p_active_col} = 1"
                     ).fetchone()
                 else:
-                    row = conn.execute("SELECT COUNT(*) AS c FROM products").fetchone()
-                products_count = int(row["c"] if row and row["c"] is not None else 0)
+                    row = conn.execute("SELECT COUNT(*) FROM products").fetchone()
+                products_count = int(row[0] if row and row[0] is not None else 0)
             except sqlite3.Error:
                 products_count = 0
 
-        # ---- LOW STOCK (produits sous leur seuil min) -----------------------
+        # ---- LOW STOCK -------------------------------------------------------
         try:
-            _low_sql = (
-                “WITH totals AS (“
-                “ SELECT product_id, COALESCE(SUM(qty),0) AS qty_total”
-                “ FROM stock_lots WHERE status='open'”
-                “ GROUP BY product_id”
-                “)”
-                “ SELECT COUNT(*) AS c”
-                “ FROM products p”
-                “ LEFT JOIN totals t ON t.product_id = p.id”
-                “ WHERE p.min_qty IS NOT NULL”
-                “  AND COALESCE(p.low_stock_enabled,1) != 0”
-                “  AND COALESCE(t.qty_total,0) <= p.min_qty”
-            )
-            row = conn.execute(_low_sql).fetchone()
+            row = conn.execute(
+                "WITH totals AS ("
+                " SELECT product_id, COALESCE(SUM(qty),0) AS qty_total"
+                " FROM stock_lots WHERE status='open'"
+                " GROUP BY product_id"
+                ")"
+                " SELECT COUNT(*) FROM products p"
+                " LEFT JOIN totals t ON t.product_id = p.id"
+                " WHERE p.min_qty IS NOT NULL"
+                " AND COALESCE(p.low_stock_enabled,1) != 0"
+                " AND COALESCE(t.qty_total,0) <= p.min_qty"
+            ).fetchone()
             low_stock_count = int(row[0] if row and row[0] is not None else 0)
         except sqlite3.Error:
             low_stock_count = 0
 
-        # ---- LOTS (table + filtres “actifs”) ---------------------------------
+        # ---- LOTS ------------------------------------------------------------
         lots_table = None
         try:
             lots_table = _guess_lots_table(conn)
@@ -178,51 +150,40 @@ def ha_summary():
         if lots_table:
             try:
                 from_clause, where_clause, params = _build_from_where_for_lots(conn, lots_table)
-
-                # Total lots actifs
                 row = conn.execute(
-                    f"SELECT COUNT(*) AS c FROM {from_clause} WHERE {where_clause}",
+                    f"SELECT COUNT(*) FROM {from_clause} WHERE {where_clause}",
                     params,
                 ).fetchone()
-                lots_count = int(row["c"] if row and row["c"] is not None else 0)
+                lots_count = int(row[0] if row and row[0] is not None else 0)
             except sqlite3.Error:
                 lots_count = 0
 
-            # URGENTS (sur lots actifs)
+            # URGENTS
             try:
                 row = conn.execute(
-                    f"""
-                    SELECT COUNT(*) AS c
-                    FROM {from_clause}
-                    WHERE {where_clause}
-                      AND L.best_before IS NOT NULL
-                      AND L.best_before <> ''
-                      AND (julianday(L.best_before) - julianday(?)) <= ?
-                    """,
+                    f"SELECT COUNT(*) FROM {from_clause}"
+                    f" WHERE {where_clause}"
+                    " AND L.best_before IS NOT NULL AND L.best_before <> ''"
+                    " AND (julianday(L.best_before) - julianday(?)) <= ?",
                     params + (today, crit_days),
                 ).fetchone()
-                urgent_count = int(row["c"] if row and row["c"] is not None else 0)
+                urgent_count = int(row[0] if row and row[0] is not None else 0)
             except sqlite3.Error:
                 urgent_count = 0
 
-            # BIENTÔT (sur lots actifs)
+            # BIENTOT
             try:
                 row = conn.execute(
-                    f"""
-                    SELECT COUNT(*) AS c
-                    FROM {from_clause}
-                    WHERE {where_clause}
-                      AND L.best_before IS NOT NULL
-                      AND L.best_before <> ''
-                      AND (julianday(L.best_before) - julianday(?)) > ?
-                      AND (julianday(L.best_before) - julianday(?)) <= ?
-                    """,
+                    f"SELECT COUNT(*) FROM {from_clause}"
+                    f" WHERE {where_clause}"
+                    " AND L.best_before IS NOT NULL AND L.best_before <> ''"
+                    " AND (julianday(L.best_before) - julianday(?)) > ?"
+                    " AND (julianday(L.best_before) - julianday(?)) <= ?",
                     params + (today, crit_days, today, warn_days),
                 ).fetchone()
-                soon_count = int(row["c"] if row and row["c"] is not None else 0)
+                soon_count = int(row[0] if row and row[0] is not None else 0)
             except sqlite3.Error:
                 soon_count = 0
-        # sinon : pas de table plausible → compteurs à 0
 
     except sqlite3.Error as e:
         raise HTTPException(status_code=500, detail=f"SQLite error: {e}") from e
