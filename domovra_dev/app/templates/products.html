@@ -269,7 +269,7 @@ Astuce : tu peux combiner (ex. « ddm produits laitiers »)."></span>
             data-lots="{{ it.lots_count|int }}" data-qty="{{ '%.2f'|format(it.qty_total) }}"
             data-last-price="{{ '%.2f'|format(it.last_price_unit) if it.last_price_unit else '' }}"
             data-price-currency="{{ it.currency or '€' }}" data-price-label="{{ it.price_label or '€/pièce' }}"
-            data-price-history='{{ (it.price_history_json or "[]")|safe }}'
+            data-price-history="{{ it.price_history_json or '[]' }}"
             data-stock-value="{{ '%.2f'|format(it.stock_value) if it.stock_value else '' }}"
             data-last-in="{{ inf.last_in if inf and inf.last_in else '' }}"
             data-last-out="{{ inf.last_out if inf and inf.last_out else '' }}">

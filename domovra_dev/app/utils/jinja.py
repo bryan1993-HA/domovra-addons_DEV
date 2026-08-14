@@ -70,11 +70,16 @@ def fmt_qty(qty, unit: str) -> dict:
     return {"v": _pretty_num(q), "u": u}
 
 def _get_locations_json() -> str:
-    """Retourne les emplacements DB sous forme JSON pour AC_LISTS.locations."""
+    """Retourne les emplacements DB sous forme JSON pour AC_LISTS.locations.
+
+    ensure_ascii=True + remplacement de '</' par '<\/' empêche toute injection
+    XSS via fermeture prématurée du tag <script> (ex: </script><script>alert(1)).
+    """
     try:
         from db import list_locations
         locs = list_locations()
-        return json.dumps([loc["name"] for loc in locs], ensure_ascii=False)
+        result = json.dumps([loc["name"] for loc in locs], ensure_ascii=True)
+        return result.replace("</", "<\\/")
     except Exception:
         return "[]"
 
