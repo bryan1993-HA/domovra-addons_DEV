@@ -1,7 +1,7 @@
 {
   "name": "Domovra (DEV)",
   "slug": "domovra_dev",
-  "version": "1.4.64-dev.10",
+  "version": "1.4.64-dev.11",
   "stage": "experimental",
   "description": "Version de développement. À utiliser uniquement pour les tests.",
   "url": "https://github.com/bryan1993-HA/domovra-addons_DEV",
@@ -19,12 +19,6 @@
   "ingress": true,
   "ingress_port": 8098,
   "ingress_entry": "/",
-  "ports": {
-    "8098/tcp": 8098
-  },
-  "ports_description": {
-    "8098/tcp": "Domovra-dev HTTP/API"
-  },
   "panel_icon": "mdi:package-variant-closed",
   "panel_title": "domovra_dev",
   "map": [

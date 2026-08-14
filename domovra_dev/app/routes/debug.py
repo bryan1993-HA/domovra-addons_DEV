@@ -6,7 +6,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any, Dict, List
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from config import DB_PATH
@@ -22,8 +22,21 @@ def _conn() -> sqlite3.Connection:
     return c
 
 
+def _require_ingress(request: Request) -> None:
+    """Bloque l'accès si la requête ne passe pas par HA Ingress.
+
+    HA Ingress injecte le header X-Ingress-Path sur chaque requête proxifiée.
+    Sans ce header (accès direct port 8098), les routes debug sont refusées.
+    """
+    if not request.headers.get("x-ingress-path"):
+        raise HTTPException(
+            status_code=403,
+            detail="Accès refusé : ces routes sont réservées à l'accès via HA Ingress.",
+        )
+
+
 # ========= Endpoints =========
-@router.get("/_debug/vars")
+@router.get("/_debug/vars", dependencies=[Depends(_require_ingress)])
 def debug_vars(request: Request) -> Dict[str, Any]:
     """
     Retourne quelques infos utiles pour vérifier les assets/CSS :
@@ -52,11 +65,11 @@ def debug_vars(request: Request) -> Dict[str, Any]:
     }
 
 
-@router.get("/debug/db")
+@router.get("/debug/db", dependencies=[Depends(_require_ingress)])
 def debug_db() -> JSONResponse:
     """
     Dump léger : liste les tables (hors sqlite_*) et
-    jusqu’à 5 lignes par table, pour inspection rapide.
+    jusqu'à 5 lignes par table, pour inspection rapide.
     """
     out: List[Dict[str, Any]] = []
     with _conn() as c:

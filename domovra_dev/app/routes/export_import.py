@@ -22,6 +22,8 @@ from db import (
 logger = logging.getLogger("domovra.export_import")
 router = APIRouter(prefix="/data", tags=["export-import"])
 
+MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10 Mo
+
 
 # ─── EXPORT ──────────────────────────────────────────────────────────────────
 
@@ -126,7 +128,13 @@ async def import_products(
     on_conflict=skip  → ignorer les lignes dont le nom/barcode existe déjà
     on_conflict=update → mettre à jour les produits existants
     """
-    raw = await file.read()
+    raw = await file.read(MAX_UPLOAD_SIZE + 1)
+    if len(raw) > MAX_UPLOAD_SIZE:
+        return JSONResponse(
+            {"ok": False, "error": "Fichier trop volumineux (max 10 Mo)."},
+            status_code=413,
+        )
+
     try:
         rows = _parse_csv(raw)
     except Exception as e:
@@ -262,7 +270,13 @@ async def import_lots(
                          location, qty, best_before (optionnel), frozen_on (optionnel)
     on_conflict ignoré ici (les lots ne sont pas des singletons — on crée toujours).
     """
-    raw = await file.read()
+    raw = await file.read(MAX_UPLOAD_SIZE + 1)
+    if len(raw) > MAX_UPLOAD_SIZE:
+        return JSONResponse(
+            {"ok": False, "error": "Fichier trop volumineux (max 10 Mo)."},
+            status_code=413,
+        )
+
     try:
         rows = _parse_csv(raw)
     except Exception as e:

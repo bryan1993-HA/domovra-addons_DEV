@@ -8,7 +8,7 @@ import io
 import sqlite3
 from typing import Any, List
 
-from fastapi import APIRouter, Request, Query, HTTPException
+from fastapi import APIRouter, Depends, Request, Query, HTTPException
 from fastapi.responses import HTMLResponse, StreamingResponse
 
 from config import DB_PATH
@@ -16,12 +16,27 @@ from utils.http import ingress_base, render as render_with_env
 
 router = APIRouter()
 
+
 def _conn() -> sqlite3.Connection:
     c = sqlite3.connect(DB_PATH)
     c.row_factory = sqlite3.Row
     return c
 
-@router.get("/admin/db", response_class=HTMLResponse)
+
+def _require_ingress(request: Request) -> None:
+    """Bloque l'accès si la requête ne passe pas par HA Ingress.
+
+    HA Ingress injecte le header X-Ingress-Path sur chaque requête proxifiée.
+    Sans ce header (accès direct port 8098), les routes admin sont refusées.
+    """
+    if not request.headers.get("x-ingress-path"):
+        raise HTTPException(
+            status_code=403,
+            detail="Accès refusé : ces routes sont réservées à l'accès via HA Ingress.",
+        )
+
+
+@router.get("/admin/db", response_class=HTMLResponse, dependencies=[Depends(_require_ingress)])
 async def admin_db_home(request: Request):
     with _conn() as c:
         rows = c.execute("""
@@ -41,7 +56,7 @@ async def admin_db_home(request: Request):
         title="Admin · Base de données",
     )
 
-@router.get("/admin/db/table/{table}", response_class=HTMLResponse)
+@router.get("/admin/db/table/{table}", response_class=HTMLResponse, dependencies=[Depends(_require_ingress)])
 async def admin_db_table(
     request: Request,
     table: str,
@@ -93,7 +108,7 @@ async def admin_db_table(
         title=f"Admin · {table}",
     )
 
-@router.get("/admin/db/table/{table}/export.csv")
+@router.get("/admin/db/table/{table}/export.csv", dependencies=[Depends(_require_ingress)])
 async def admin_db_export_csv(
     request: Request,
     table: str,
