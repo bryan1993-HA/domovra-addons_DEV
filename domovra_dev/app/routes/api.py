@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 import logging
 from typing import Any, Dict, Optional
@@ -62,6 +63,11 @@ def api_off(barcode: str) -> JSONResponse:
     if not barcode:
         return JSONResponse({"ok": False, "error": "missing barcode"}, status_code=400)
 
+    # Validation stricte : EAN-8, EAN-13, UPC-A, ITF-14 — chiffres uniquement (8-14 digits)
+    if not re.match(r"^\d{8,14}$", barcode):
+        log.warning("api_off: barcode invalide rejeté: %r", barcode)
+        return JSONResponse({"ok": False, "error": "invalid barcode"}, status_code=400)
+
     url = f"https://world.openfoodfacts.org/api/v2/product/{barcode}.json"
 
     try:
@@ -103,7 +109,7 @@ def _first_non_empty(*vals: Optional[str]) -> Optional[str]:
 @router.get("/api/product-info")
 def api_product_info(product_id: int = Query(..., ge=1)) -> JSONResponse:
     """
-    Donne l’état d’un produit pour la carte 'Consommer un produit':
+    Donne l'état d'un produit pour la carte 'Consommer un produit':
       - fifo: lot à consommer en premier (DLC la plus proche)
       - total_qty: somme des lots > 0
       - unit, brand
@@ -203,7 +209,7 @@ def api_consume_disabled(
     log.warning("api_consume disabled: DB table 'lots' missing. Use client-side lot/consume.")
     return JSONResponse({"ok": False, "error": "disabled"}, status_code=501)
 
-# ---- Consommation ciblée d’un lot (optionnelle) --------------------
+# ---- Consommation ciblée d'un lot (optionnelle) --------------------
 @router.post("/api/stock/consume-lot")
 def api_consume_lot(
     lot_id: int = Body(..., embed=True, ge=1),
@@ -218,7 +224,7 @@ def api_consume_lot(
     if q <= 0:
         return JSONResponse({"ok": False, "error": "qty must be > 0"}, status_code=400)
 
-    # Si ta base n’a pas de table 'lots', on sort poliment :
+    # Si ta base n'a pas de table 'lots', on sort poliment :
     try:
         with _conn() as c:
             row = c.execute(

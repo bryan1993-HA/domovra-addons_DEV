@@ -1,7 +1,7 @@
 # domovra/app/main.py
 # ============================================================
-# Domovra — Point d’entrée FastAPI
-# - Boot de l’app (logging, templates, static)
+# Domovra — Point d'entrée FastAPI
+# - Boot de l'app (logging, templates, static)
 # - Montage des routers (pages + API + debug)
 # - Hooks de lifecycle (startup)
 # ============================================================
@@ -12,8 +12,10 @@ import asyncio
 import logging
 import os
 from logging.handlers import RotatingFileHandler
+from urllib.parse import urlparse
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from config import DB_PATH, get_retention_thresholds
@@ -21,7 +23,7 @@ from services.events import _ensure_events_table
 from utils.assets import ensure_hashed_asset
 from utils.jinja import build_jinja_env
 
-# Routers “pages”
+# Routers "pages"
 from routes.home import router as home_router
 from routes.products import router as products_router
 from routes.locations import router as locations_router
@@ -92,6 +94,46 @@ app.state.templates = templates
 
 
 # ============================================================
+# Middleware CSRF
+# ============================================================
+
+@app.middleware("http")
+async def csrf_check(request: Request, call_next):
+    """
+    Protection CSRF basée sur la vérification du header Origin.
+
+    Logique :
+    - Les méthodes sûres (GET, HEAD, OPTIONS) passent sans vérification.
+    - Via HA Ingress (header X-Ingress-Path présent) : HA gère l'auth,
+      aucun risque CSRF → on laisse passer.
+    - Accès direct port 8098 : si le header Origin est présent et ne
+      correspond pas au Host, la requête cross-site est rejetée (403).
+      Les navigateurs ne peuvent pas forger Origin sur des requêtes
+      cross-origin, ce qui bloque les attaques CSRF classiques.
+    """
+    if request.method not in ("POST", "PUT", "DELETE", "PATCH"):
+        return await call_next(request)
+
+    # Via HA Ingress — HA authentifie, CSRF non applicable
+    if request.headers.get("x-ingress-path"):
+        return await call_next(request)
+
+    # Accès direct : vérifier Origin si présent
+    origin = request.headers.get("origin")
+    if origin:
+        host = request.headers.get("host", "")
+        origin_host = urlparse(origin).netloc
+        if origin_host != host:
+            logger.warning(
+                "CSRF rejeté : origin=%s host=%s path=%s",
+                origin, host, request.url.path,
+            )
+            return PlainTextResponse("Forbidden: CSRF check failed", status_code=403)
+
+    return await call_next(request)
+
+
+# ============================================================
 # Fichiers statiques + CSS versionné
 # ============================================================
 
@@ -99,10 +141,10 @@ HERE = os.path.dirname(__file__)
 STATIC_DIR = os.path.join(HERE, "static")
 os.makedirs(os.path.join(STATIC_DIR, "css"), exist_ok=True)
 
-# /static sera résolu automatiquement derrière l’ingress
+# /static sera résolu automatiquement derrière l'ingress
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
-# Calcule une version hashée de la CSS et l’injecte dans Jinja
+# Calcule une version hashée de la CSS et l'injecte dans Jinja
 try:
     css_rel = ensure_hashed_asset("static/css/domovra.css")  # -> static/css/domovra-<hash>.css
     if not (isinstance(css_rel, str) and css_rel.startswith("static/")):
