@@ -16,7 +16,7 @@
       <span class="muted">→ lots issus des achats</span>
     </div>
 
-    <!-- Barre compacte : recherche + bouton Filtres (sans "?") -->
+    <!-- Barre compacte : recherche + boutons -->
     <div class="filters-row compact">
       <div class="qwrap wide">
         <input id="q" type="search" placeholder="Rechercher (produit, emplacement, EAN)…">
@@ -29,6 +29,10 @@
       <button type="button" class="btn ghost" id="btn-hide-zero" title="Masquer les lots dont la quantité est à 0">
         Masquer stock à 0
       </button>
+
+      <button type="button" class="btn ghost" id="btn-group" title="Regrouper les lots par produit">
+        Regrouper
+      </button>
     </div>
 
     <!-- Ligne méta : compteur + résumé des filtres -->
@@ -37,14 +41,14 @@
     </div>
   </div>
 
-  <!-- Grille de cartes -->
+  <!-- Grille de cartes détaillée (vue par défaut) -->
   <div class="cards-grid" id="lot-cards">
     {% if items %}
     {% for it in items %}
     {% set code = it.ean or it.barcode %}
     {% set m = (it.multiplier or 1) | int %}
     {% set qty_unit = it.qty_per_unit or 0 %}
-    {% set u_buy = (it.unit_at_purchase or '') %}
+    {% set u_buy = (it.unit_at_purchase or "") %}
     {% set price_total = it.price_total %}
     {% set per_unit = (price_total / m) if (price_total is not none and m > 0) else none %}
 
@@ -52,19 +56,27 @@
     {% set u_map = (u_buy | lower) %}
     {% set price_per_base = none %}
     {% if price_total is not none and qty_unit and m %}
-    {% if u_map in ['g','kg'] %}
-    {% set total_kg = ((qty_unit/1000.0) if u_map=='g' else qty_unit) * m %}
+    {% if u_map in ["g","kg"] %}
+    {% set total_kg = ((qty_unit/1000.0) if u_map=="g" else qty_unit) * m %}
     {% if total_kg > 0 %}{% set price_per_base = price_total / total_kg %}{% endif %}
-    {% elif u_map in ['ml','l'] %}
-    {% set total_l = ((qty_unit/1000.0) if u_map=='ml' else qty_unit) * m %}
+    {% elif u_map in ["ml","l"] %}
+    {% set total_l = ((qty_unit/1000.0) if u_map=="ml" else qty_unit) * m %}
     {% if total_l > 0 %}{% set price_per_base = price_total / total_l %}{% endif %}
     {% endif %}
     {% endif %}
 
-    <article class="prod-card" data-name="{{ (it.name or it.article_name or it.product)|lower }}"
-      data-product="{{ (it.name or it.article_name or it.product)|lower }}" data-loc="{{ it.location|lower }}"
-      data-barcode="{{ (code or '')|lower }}" data-status="{{ it.status }}"
-      data-qty="{{ it.qty|float }}">
+    <article class="prod-card"
+      data-name="{{ (it.name or it.article_name or it.product)|lower }}"
+      data-product="{{ (it.name or it.article_name or it.product)|lower }}"
+      data-loc="{{ it.location|lower }}"
+      data-barcode="{{ (code or "")|lower }}"
+      data-status="{{ it.status }}"
+      data-qty="{{ it.qty|float }}"
+      data-unit="{{ it.unit or "pcs" }}"
+      data-loc-display="{{ it.location }}"
+      data-name-display="{{ it.name or it.article_name or it.product }}"
+      data-best-before="{{ it.best_before or "" }}"
+      data-frozen="{{ it.frozen_on or "" }}">
 
       <!-- En-tête -->
       <div class="pc-head">
@@ -74,12 +86,11 @@
             {% if it.brand %}<span class="muted"> — {{ it.brand }}</span>{% endif %}
           </h3>
           <div class="pc-meta muted">
-            {{ it.qty }} {{ (it.unit or 'pcs')|pluralize_fr(it.qty) }} • 📍 {{ it.location }}
+            {{ it.qty }} {{ (it.unit or "pcs")|pluralize_fr(it.qty) }} • 📍 {{ it.location }}
             {% if code %} • 🏷️ {{ code }}{% endif %}
             {% if it.store %} • 🛍️ {{ it.store }}{% endif %}
           </div>
         </div>
-        {# plus d'actions dans le header en mode compact #}
       </div>
 
       <!-- Corps -->
@@ -109,14 +120,14 @@
               {# Quantité : utile même seule #}
               <div class="row">
                 <span class="k">Quantité totale</span>
-                <span class="v">{{ it.qty }} {{ (it.unit or 'pcs')|pluralize_fr(it.qty) }}</span>
+                <span class="v">{{ it.qty }} {{ (it.unit or "pcs")|pluralize_fr(it.qty) }}</span>
               </div>
 
               {# Prix total #}
               {% if price_total is not none %}
               <div class="row">
                 <span class="k">Prix total</span>
-                <span class="v">{{ '%.2f'|format(price_total) }} €</span>
+                <span class="v">{{ "%.2f"|format(price_total) }} €</span>
               </div>
               {% endif %}
 
@@ -124,7 +135,7 @@
               {% if per_unit is not none %}
               <div class="row">
                 <span class="k">Prix / unité</span>
-                <span class="v">{{ '%.2f'|format(per_unit) }} €</span>
+                <span class="v">{{ "%.2f"|format(per_unit) }} €</span>
               </div>
               {% endif %}
 
@@ -144,7 +155,7 @@
               {% if price_per_base is not none %}
               <div class="row">
                 <span class="k">Prix / kg·L</span>
-                <span class="v">{{ '%.2f'|format(price_per_base) }} €/{{ 'kg' if u_map in ['g','kg'] else 'L' }}</span>
+                <span class="v">{{ "%.2f"|format(price_per_base) }} €/{{ "kg" if u_map in ["g","kg"] else "L" }}</span>
               </div>
               {% endif %}
 
@@ -163,7 +174,6 @@
             </div>
             {% endif %}
 
-
             {% if it.note %}
             <div class="note" style="margin-top:.5rem">
               <span class="k">Note</span>
@@ -176,9 +186,13 @@
     </article>
     {% endfor %}
     {% else %}
-    <div class="muted" style="padding:1rem">Aucun stock pour l’instant.</div>
+    <div class="muted" style="padding:1rem">Aucun stock pour l'instant.</div>
     {% endif %}
   </div>
+
+  <!-- Grille de cartes groupées (vue par produit, générée par JS) -->
+  <div class="cards-grid" id="group-cards" hidden></div>
+
 </div>
 
 <!-- Dialog Filtres -->
@@ -272,6 +286,7 @@
 <script>
   const $ = s => document.querySelector(s);
   const cardsWrap = document.getElementById('lot-cards');
+  const groupWrap = document.getElementById('group-cards');
   const cards = Array.from(cardsWrap?.querySelectorAll('.prod-card') || []);
   const q = document.getElementById('q');
   const fProd = document.getElementById('f_prod');
@@ -279,14 +294,22 @@
   const fStatus = document.getElementById('f_status');
   const countEl = document.getElementById('lots-count');
 
-  function matches(ds, txt, loc, st, prod) {
-    const s = (ds.name + ' ' + (ds.loc || '') + ' ' + (ds.barcode || '')).includes(txt);
-    const l = loc ? (ds.loc === loc) : true;
-    const t = st ? ((ds.status || '') === st) : true;
-    const p = prod ? ((ds.product || '') === prod) : true;
-    return s && l && t && p;
+  /* ---- Helpers ---- */
+  function esc(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
   }
 
+  function fmtQty(n) {
+    n = parseFloat(n) || 0;
+    if (Number.isInteger(n)) return String(n);
+    return n.toFixed(2).replace(/\.?0+$/, '');
+  }
+
+  /* ---- Masquer stock à 0 ---- */
   const HIDE_ZERO_KEY = 'domovra_hide_zero';
   let hideZero = localStorage.getItem(HIDE_ZERO_KEY) === '1';
 
@@ -295,6 +318,108 @@
     if (!btn) return;
     btn.classList.toggle('active', hideZero);
     btn.textContent = hideZero ? 'Afficher stock à 0' : 'Masquer stock à 0';
+  }
+
+  /* ---- Vue groupée ---- */
+  const GROUP_KEY = 'domovra_lots_grouped';
+  let grouped = localStorage.getItem(GROUP_KEY) === '1';
+
+  function syncGroupBtn() {
+    const btn = document.getElementById('btn-group');
+    if (!btn) return;
+    btn.classList.toggle('active', grouped);
+    btn.textContent = grouped ? 'Vue détaillée' : 'Regrouper';
+  }
+
+  function worstStatus(statuses) {
+    if (statuses.includes('red')) return 'red';
+    if (statuses.includes('yellow')) return 'yellow';
+    return 'green';
+  }
+
+  function buildGroups() {
+    const visibleCards = cards.filter(c => c.style.display !== 'none');
+    const groups = new Map();
+
+    visibleCards.forEach(card => {
+      const key = card.dataset.product || '';
+      if (!groups.has(key)) {
+        groups.set(key, {
+          display: card.dataset.nameDisplay || key,
+          qty: 0,
+          unit: card.dataset.unit || 'pcs',
+          statuses: [],
+          lots: []
+        });
+      }
+      const g = groups.get(key);
+      const qty = parseFloat(card.dataset.qty || 0);
+      g.qty += qty;
+      g.statuses.push(card.dataset.status || 'green');
+      g.lots.push({
+        qty: qty,
+        unit: card.dataset.unit || 'pcs',
+        loc: card.dataset.locDisplay || card.dataset.loc || '',
+        bb: card.dataset.bestBefore || '',
+        frozen: card.dataset.frozen || ''
+      });
+    });
+
+    const sorted = [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+
+    let html = '';
+    sorted.forEach(([key, g]) => {
+      const worst = worstStatus(g.statuses);
+      const icon = worst === 'red' ? '🔴' : worst === 'yellow' ? '🟡' : '🟢';
+      const n = g.lots.length;
+      const qtyStr = fmtQty(g.qty);
+      const plural = n > 1 ? 's' : '';
+
+      const lotsHtml = g.lots.map(l => {
+        const right = l.frozen
+          ? '❄ ' + esc(l.frozen)
+          : l.bb ? '⏳ ' + esc(l.bb) : '';
+        return '<div class="row">'
+          + '<span class="k">' + esc(fmtQty(l.qty)) + ' ' + esc(l.unit) + ' · 📍 ' + esc(l.loc) + '</span>'
+          + '<span class="v">' + right + '</span>'
+          + '</div>';
+      }).join('');
+
+      html += '<article class="prod-card" data-product="' + esc(key) + '" data-status="' + esc(worst) + '" data-qty="' + g.qty + '">'
+        + '<div class="pc-head"><div class="pc-title">'
+        + '<h3 class="pc-name">' + esc(g.display) + '</h3>'
+        + '<div class="pc-meta muted">' + icon + ' ' + esc(qtyStr) + ' ' + esc(g.unit) + ' · ' + n + ' lot' + plural + '</div>'
+        + '</div></div>'
+        + '<div class="pc-body"><div class="stat full"><details class="more">'
+        + '<summary>➕ Détail des ' + n + ' lot' + plural + '</summary>'
+        + '<div class="kv">' + lotsHtml + '</div>'
+        + '</details></div></div>'
+        + '</article>';
+    });
+
+    if (groupWrap) {
+      groupWrap.innerHTML = html || '<div class="muted" style="padding:1rem">Aucun stock visible.</div>';
+    }
+  }
+
+  function applyGroupMode() {
+    if (grouped) {
+      buildGroups();
+      if (cardsWrap) cardsWrap.hidden = true;
+      if (groupWrap) groupWrap.hidden = false;
+    } else {
+      if (cardsWrap) cardsWrap.hidden = false;
+      if (groupWrap) groupWrap.hidden = true;
+    }
+  }
+
+  /* ---- Filtre principal ---- */
+  function matches(ds, txt, loc, st, prod) {
+    const s = (ds.name + ' ' + (ds.loc || '') + ' ' + (ds.barcode || '')).includes(txt);
+    const l = loc ? (ds.loc === loc) : true;
+    const t = st ? ((ds.status || '') === st) : true;
+    const p = prod ? ((ds.product || '') === prod) : true;
+    return s && l && t && p;
   }
 
   function applyFilter() {
@@ -313,7 +438,9 @@
       if (visible) shown++;
     });
     if (countEl) countEl.textContent = (txt || loc || st || prod || hideZero) ? shown : cards.length;
+    if (grouped) buildGroups();
   }
+
   [q, fLoc, fStatus, fProd].forEach(el => el && el.addEventListener('input', applyFilter));
 
   document.getElementById('btn-hide-zero')?.addEventListener('click', () => {
@@ -323,8 +450,17 @@
     applyFilter();
   });
 
+  document.getElementById('btn-group')?.addEventListener('click', () => {
+    grouped = !grouped;
+    localStorage.setItem(GROUP_KEY, grouped ? '1' : '0');
+    syncGroupBtn();
+    applyGroupMode();
+  });
+
   syncHideZeroBtn();
+  syncGroupBtn();
   if (hideZero) applyFilter();
+  if (grouped) applyGroupMode();
 
   /* --- Toasts via querystring --- */
   (function () {
@@ -355,7 +491,7 @@
         setVal('del-lot-id', btn.dataset.id);
         const msg = document.getElementById('del-msg');
         msg && (msg.textContent = btn.dataset.product
-          ? `Supprimer "${btn.dataset.product}" du stock ?`
+          ? 'Supprimer "' + btn.dataset.product + '" du stock ?'
           : 'Supprimer cette entrée de stock ?');
         delDialog?.showModal();
       });
@@ -420,43 +556,30 @@
       document.querySelectorAll('.menu-wrap .kebab[aria-expanded="true"]').forEach(b => b.setAttribute('aria-expanded', 'false'));
     }
 
-    // Ferme tout au chargement (au cas où)
     document.addEventListener('DOMContentLoaded', closeAllMenus);
 
-    // Toggle au clic sur le bouton kebab
     document.addEventListener('click', (e) => {
       const btn = e.target.closest('.menu-wrap .kebab');
       if (btn) {
         const wrap = btn.closest('.menu-wrap');
         const menu = wrap?.querySelector('.menu');
         const isOpen = menu?.dataset.open === '1';
-
-        // fermer d'abord tous les autres
         closeAllMenus();
-
-        // ouvrir si c'était fermé
         if (menu && !isOpen) {
           menu.hidden = false;
           menu.dataset.open = '1';
           btn.setAttribute('aria-expanded', 'true');
         }
-        // si c'était ouvert, on vient de le fermer via closeAllMenus()
         return;
       }
-
-      // Clic à l'intérieur d'un menu => laisser passer
       if (e.target.closest('.menu-wrap .menu')) return;
-
-      // Clic ailleurs => fermer
       closeAllMenus();
     });
 
-    // ESC pour fermer
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') closeAllMenus();
     });
 
-    // Quand un <details> se referme, on ferme le menu à l'intérieur
     document.querySelectorAll('details.more').forEach(d => {
       d.addEventListener('toggle', () => { if (!d.open) closeAllMenus(); });
     });

@@ -1,46 +1,186 @@
 # Changelog
 
-
-Liste d'achats:
-
-Modification
-shopping.html
-shopping.py
-domovra.css ( partie shopping )
-base.html
+Toutes les modifications notables de ce projet sont documentées dans ce fichier.
+Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/).
 
 ---
 
-## [1.4.2] - 2025-09-04 - 03:24
+## [1.4.64-dev.14] - 2026-08-15
+
 ### Added
-- Page `_about.html` regroupant plusieurs informations et liens :
-  - **À propos / Infos système**
+- **#23** : Fichiers de traductions `translations/en.json` et `translations/fr.json` pour les options de configuration HA
+- **#13** : Page Stocks — vue groupée par produit (toggle Regrouper / Vue détaillée, état persisté en `localStorage`, compatible avec tous les filtres existants)
+
+### Changed
+- **#24** : `config.json` — options `retention_days_warning` et `retention_days_critical` exposées dans l'UI add-on HA (valeurs par défaut : 30 et 14 jours)
+- **#24** : `config.py` — lit `/data/options.json` (Supervisor HA) en priorité pour les seuils DLC ; fallback sur les réglages in-app puis les variables d'environnement
+- **#18** : `CHANGELOG.md` reconstruit depuis l'historique git (couvre toutes les versions depuis v1.4.2)
+
+---
+
+## [1.4.64-dev.13] - 2026-08-15
+
+### Fixed
+- **#7** : `build.json` — images Alpine 3.20 pinées pour les 3 archs (était `:latest`)
+- **#25** : `Dockerfile` — dépendances pip avec bornes de version (`fastapi>=0.110.0,<1.0.0`, `uvicorn[standard]>=0.27.0,<1.0.0`, `jinja2>=3.1.0,<4.0.0`, `python-multipart>=0.0.9,<1.0.0`)
+- **#16** : `add_lot_purchase()` supprimée de `db.py` (code mort — importée mais jamais appelée)
+- **#17** : `consume_lot()` et `update_lot()` — erreurs silencieuses remplacées par des logs `warning` / `error` explicites
+- **#27** : SQLite WAL mode activé au démarrage (`PRAGMA journal_mode=WAL`), timeout connexion 10 s, `busy_timeout` 10 000 ms
+
+---
+
+## [1.4.64-dev.12] - 2026-08-15
+
+### Fixed
+- **#5** : Panel Avancé — 7 clés de settings absentes de `DEFAULTS` dans `settings_store.py` (purgées à chaque chargement) → toutes les options du panel Avancé sont maintenant persistées correctement
+- **#6** : Double push HA au démarrage — unification en une seule boucle asyncio (push immédiat au démarrage + périodique toutes les 5 min, sans thread daemon)
+- **#14** : Scanner OFF — le flag `nameTouched` n'était pas réinitialisé au reset du formulaire → le nom du produit est désormais pré-rempli correctement depuis l'API Open Food Facts
+- **#22** : Race condition SQLite sur la fusion de lots — transaction `BEGIN IMMEDIATE` atomique dans `_add_or_merge_lot()` (remplace l'ancienne séquence 3 connexions)
+- **#26** : Erreurs push HA silencieuses — logs `warning` / `error` explicites dans `ha_entities.py` (URLError → warning, Exception → error)
+
+---
+
+## [1.4.64-dev.11] - 2026-08-15
+
+### Security
+- **#21** : Import CSV — taille limitée à 1 MB (rejet HTTP 413 si dépassée)
+- **#4** : Routes `/admin` et `/debug` protégées par vérification du token Ingress HA ; port 8098 supprimé de `config.json` (accès exclusivement via Ingress)
+
+---
+
+## [1.4.64-dev.10] - 2026-08-15
+
+### Security
+- **#19** : Protection CSRF sur toutes les routes POST (middleware token double-submit cookie)
+- **#20** : Barcode validé dans `/api/off` — regex alphanumérique, max 48 caractères
+
+---
+
+## [1.4.64-dev.9] - 2026-08-15
+
+### Security
+- **#2** : XSS corrigé — `AC_LOCATIONS_JSON | safe` dans `base.html` remplacé par sérialisation JSON sécurisée côté serveur
+- **#3** : XSS corrigé — `price_history_json | safe` dans `products.html` remplacé par filtre sécurisé
+
+---
+
+## [1.4.64-dev.8] - 2026-08-14
+
+### Chore
+- Ajout des templates d'issues GitHub (bug, amélioration, fonctionnalité, UI)
+
+---
+
+## [1.4.64-dev.7] - 2026-08-08
+
+### Fixed
+- Panneau Acheter (liste de courses) : espacement flex corrigé entre les sections
+- Formulaire d'achat : `display: grid` déplacé sur le bon élément DOM (était sur le wrapper)
+
+---
+
+## [1.4.64-dev.6] - 2026-08-07
+
+### Fixed
+- Espacement du panneau Acheter dans la liste de courses
+
+---
+
+## [1.4.64-dev.5] - 2026-08-07
+
+### Added
+- Autocomplete universel stylé — remplace tous les `<datalist>` natifs (produits, marques, magasins, emplacements)
+
+---
+
+## [1.4.64-dev.4] - 2026-08-07
+
+### Changed
+- Liste de courses : refonte complète du layout → cartes par catégorie avec items cochables (remplace la liste plate)
+
+---
+
+## [1.4.64-dev.3] - 2026-08-07
+
+### Fixed
+- Datalist enseignes françaises déplacé dans le bon bloc Jinja2 (`content`) — était hors du bloc et ignoré au rendu
+
+---
+
+## [1.4.64-dev.2] - 2026-08-07
+
+### Added
+- Datalist enseignes françaises sur les champs Magasin dans la liste de courses
+
+---
+
+## [1.4.64-dev.1] - 2026-08-07
+
+### Added
+- F18 : Depuis la liste de courses → ajout direct au stock (semi-automatique, avec correspondance produit existant)
+- Multi-magasin dans la liste de courses (association item ↔ magasin préféré)
+- Gestion des produits depuis la liste de courses (édition / suppression)
+
+---
+
+## [1.4.63] - 2026-08-07
+
+### Added
+- F9 : 5 capteurs Home Assistant exposés via l'API Supervisor (stock bas, DLC urgents, DLC bientôt, total lots, total produits)
+- F7 : Export / Import CSV pour produits et lots (avec validation et rapport d'erreurs)
+
+### Changed
+- F10 : Lots sans DLC supportés (champ `best_before` optionnel)
+- F6 : Auto-remplissage de la DLC depuis la fiche produit lors de l'achat
+- F19 : Ordre d'affichage de la page d'accueil revu (alertes en tête)
+- B4 : Bouton « Masquer stock à 0 » sur la page Stocks
+
+### Fixed
+- SyntaxError lié aux guillemets bouclés (U+201C / U+2019) dans `ha.py` — réécriture complète du fichier avec `Write`
+
+---
+
+## [1.4.59] - 2026-08-07
+
+### Changed
+- Refonte UI complète : sidebar avec icônes SVG, navigation améliorée, chip variants CSS, cards redesign
+- Ajustements post-refonte : sidebar active state, contraste cards, chips, gap
+
+---
+
+## [1.4.57] - 2026-08-07
+
+### Fixed
+- Faux router HA, retour de `delete_lot`, tables SQL manquantes, `run.sh` version, `log_event`
+- Corrections UI : CSS toasts, prix/pièce, filtre date, boutons shopping
+
+---
+
+## [1.4.3 → 1.4.56] - 2025-09-05 → 2025-09-16
+
+> Développement initial intensif — commits non détaillés.
+
+### Added (période)
+- Module **Shopping** : liste de courses avec items cochables par catégorie
+- Intégration base de données SQLite initiale
+- Routes CRUD : produits, lots, achats, catégories, emplacements
+- Layout sidebar + navigation principale
+
+---
+
+## [1.4.2] - 2025-09-04
+
+### Added
+- Page `_about.html` regroupant informations système et liens :
   - Add-on (nom, version, canal, slug)
-  - Liens directs : Projet GitHub, Documentation, Issues, Changelog
+  - Liens : Projet GitHub, Documentation, Issues, Changelog
   - Description de la version en cours
-  - **Système** : Python, FastAPI, Jinja2, SQLite
-  - **Données** : base SQLite, paramètres, journal (avec tailles affichées)
-  - **Comportement & UI** : thème, sidebar, durée des toasts, seuils Bientôt/Urgent
+  - Système : Python, FastAPI, Jinja2, SQLite
+  - Données : base SQLite, paramètres, journal (avec tailles affichées)
+  - Comportement & UI : thème, sidebar, durée toasts, seuils DLC
 
 ### Changed
-- `Settings.html` : menu repensé (plus esthétique et responsive) + ajout de l’onglet **À propos**
-- `settings.py` : ajout des fonctions pour récupérer et afficher les informations dans la page About
-- `run.sh` : ajout de la fonction permettant la lecture des informations système (About)
-- `Dockerfile` : ajout de la copie de `config.json` dans l’image Docker pour intégration complète
-
----
-
-## [1.4.1] - 2025-09-03 - 02:59
-### Changed
-- Version : 1.4.0 → 1.4.1
-- `panel_title` : "Domovra (Beta)" → "Domovra"
-- `panel_icon` : "mdi:test-tube" → "mdi:package-variant-closed"
-
-### Documentation
-- Ajout d'une section **Conventions de commits (simplifiées)** dans le README
-
----
-
-## [1.3.39-beta.1] - 2025-09-02 - 04:36
-### Added
-- Fichier CHANGELOG initial
+- `settings.html` : menu repensé (plus esthétique et responsive) + onglet **À propos**
+- `settings.py` : fonctions pour récupérer et afficher les informations système
+- `run.sh` : lecture des informations système (About)
+- `Dockerfile` : copie de `config.json` dans l'image Docker

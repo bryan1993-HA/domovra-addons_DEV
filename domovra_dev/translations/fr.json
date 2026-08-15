@@ -1,0 +1,12 @@
+{
+  "configuration": {
+    "retention_days_warning": {
+      "name": "Seuil d'alerte DLC (jours)",
+      "description": "Nombre de jours avant expiration en-dessous duquel un lot passe en état « Bientôt » (orange). Par défaut : 30."
+    },
+    "retention_days_critical": {
+      "name": "Seuil critique DLC (jours)",
+      "description": "Nombre de jours avant expiration en-dessous duquel un lot passe en état « Urgent » (rouge). Par défaut : 14."
+    }
+  }
+}

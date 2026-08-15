@@ -1,7 +1,7 @@
 {
   "name": "Domovra (DEV)",
   "slug": "domovra_dev",
-  "version": "1.4.64-dev.13",
+  "version": "1.4.64-dev.14",
   "stage": "experimental",
   "description": "Version de développement. À utiliser uniquement pour les tests.",
   "url": "https://github.com/bryan1993-HA/domovra-addons_DEV",
@@ -25,6 +25,12 @@
     "data:rw"
   ],
   "homeassistant_api": true,
-  "options": {},
-  "schema": {}
+  "options": {
+    "retention_days_warning": 30,
+    "retention_days_critical": 14
+  },
+  "schema": {
+    "retention_days_warning": "int",
+    "retention_days_critical": "int"
+  }
 }

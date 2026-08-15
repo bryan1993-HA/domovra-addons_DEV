@@ -1,0 +1,12 @@
+{
+  "configuration": {
+    "retention_days_warning": {
+      "name": "DLC warning threshold (days)",
+      "description": "Number of days before expiry at which a lot is marked as 'Soon expiring' (yellow). Default: 30."
+    },
+    "retention_days_critical": {
+      "name": "DLC critical threshold (days)",
+      "description": "Number of days before expiry at which a lot is marked as 'Urgent' (red). Default: 14."
+    }
+  }
+}
