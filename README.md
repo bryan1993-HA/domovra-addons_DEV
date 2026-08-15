@@ -6,7 +6,7 @@
 
 **Add-on Home Assistant** · Gérez votre frigo, congélateur et placards depuis votre tableau de bord HA.
 
-[![Version](https://img.shields.io/badge/version-1.4.64--dev.14-blue?style=for-the-badge)](https://github.com/bryan1993-HA/domovra-addons_DEV/blob/main/CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.4.64--dev.15-blue?style=for-the-badge)](https://github.com/bryan1993-HA/domovra-addons_DEV/blob/main/CHANGELOG.md)
 [![Stage](https://img.shields.io/badge/stage-experimental-orange?style=for-the-badge)](https://github.com/bryan1993-HA/domovra-addons_DEV)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-compatible-41BDF5?style=for-the-badge&logo=home-assistant)](https://www.home-assistant.io/)
 [![License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)](LICENSE)
@@ -31,6 +31,7 @@
 - [Installation](#-installation)
 - [Configuration](#️-configuration)
 - [Capteurs Home Assistant](#-capteurs-home-assistant)
+- [API REST Home Assistant](#-api-rest-home-assistant)
 - [Données & Persistance](#-données--persistance)
 - [Architecture technique](#️-architecture-technique)
 - [Changelog](#-changelog)
@@ -86,6 +87,7 @@
 | Fonctionnalité | Description |
 |---|---|
 | **5 capteurs HA** | Push automatique toutes les 5 min via l'API Supervisor |
+| **API REST complète** | 5 endpoints pour lire et écrire le stock depuis HA (rest_command, automations, scripts) |
 | **Alertes stock bas** | Produits en-dessous de leur quantité minimale → sensor + page accueil |
 | **Alertes DLC** | Lots urgents et bientôt périmés → sensors dédiés |
 | **Options via UI** | Seuils DLC configurables directement dans l'UI de gestion des add-ons |
@@ -162,6 +164,339 @@ Ces capteurs peuvent être utilisés dans vos **automatisations**, **tableaux de
 
 ---
 
+## 🔌 API REST Home Assistant
+
+Domovra expose une **API REST complète** directement accessible depuis Home Assistant — sans composant custom, uniquement avec les outils natifs (`rest_command`, `sensor: platform: rest`).
+
+> **URL de base** : `http://localhost:8098` (depuis HA) ou `http://<ip-ha>:8098` (réseau local).  
+> Tous les endpoints retournent du JSON.
+
+### 📖 Endpoints de lecture
+
+#### `GET /api/stock/products` — Liste complète des produits
+
+Retourne tous les produits avec leur stock courant, nombre de lots, catégorie.
+
+```yaml
+# configuration.yaml
+sensor:
+  - platform: rest
+    name: "Domovra produits"
+    resource: "http://localhost:8098/api/stock/products"
+    value_template: "{{ value_json.count }}"
+    json_attributes:
+      - products
+    scan_interval: 300
+```
+
+**Réponse :**
+```json
+{
+  "count": 12,
+  "products": [
+    {
+      "id": 5,
+      "name": "Pellets",
+      "unit": "kg",
+      "qty_total": 40.0,
+      "lots_count": 3,
+      "min_qty": 20.0,
+      "low_stock": false,
+      "category": "Chauffage",
+      "barcode": ""
+    }
+  ]
+}
+```
+
+---
+
+#### `GET /api/stock/low` — Produits en rupture
+
+Retourne uniquement les produits dont le stock est inférieur au seuil minimum.
+
+```yaml
+sensor:
+  - platform: rest
+    name: "Domovra ruptures"
+    resource: "http://localhost:8098/api/stock/low"
+    value_template: "{{ value_json.count }}"
+    json_attributes:
+      - products
+    scan_interval: 300
+```
+
+**Réponse :**
+```json
+{
+  "count": 2,
+  "products": [
+    { "id": 5, "name": "Pellets", "unit": "kg", "qty_total": 12.0, "min_qty": 20.0, "delta": -8.0 }
+  ]
+}
+```
+
+**Automatisation — notification de rupture :**
+```yaml
+automation:
+  - alias: "Alerte rupture de stock Domovra"
+    trigger:
+      - platform: state
+        entity_id: sensor.domovra_ruptures
+    condition:
+      - condition: template
+        value_template: "{{ states('sensor.domovra_ruptures') | int > 0 }}"
+    action:
+      - service: notify.mobile_app_mon_telephone
+        data:
+          title: "⚠️ Rupture de stock"
+          message: "{{ states('sensor.domovra_ruptures') }} produit(s) en rupture dans Domovra"
+```
+
+---
+
+#### `GET /api/product-info?product_id=X` — Détail d'un produit
+
+Retourne le stock détaillé d'un produit avec tous ses lots triés en ordre FIFO (DLC la plus proche en premier). Utile pour obtenir les `lot_id` avant une consommation ciblée.
+
+```yaml
+sensor:
+  - platform: rest
+    name: "Domovra pellets"
+    resource: "http://localhost:8098/api/product-info?product_id=5"
+    value_template: "{{ value_json.total_qty }}"
+    unit_of_measurement: "kg"
+    json_attributes:
+      - lots
+      - fifo
+    scan_interval: 300
+```
+
+**Réponse :**
+```json
+{
+  "product_id": 5,
+  "unit": "kg",
+  "brand": "",
+  "total_qty": 40.0,
+  "lots_count": 3,
+  "fifo": { "lot_id": 12, "best_before": "2025-03-01", "location": "Cave" },
+  "lots": [
+    { "lot_id": 12, "qty": 15.0, "best_before": "2025-03-01", "location": "Cave", "location_id": 2 },
+    { "lot_id": 14, "qty": 25.0, "best_before": "2025-06-15", "location": "Cave", "location_id": 2 }
+  ]
+}
+```
+
+---
+
+### ✏️ Endpoints d'écriture (automatisations)
+
+> Ajoutez les `rest_command` dans `configuration.yaml`, puis utilisez-les dans vos scripts et automatisations.
+
+#### Configuration des `rest_command`
+
+```yaml
+# configuration.yaml
+rest_command:
+  # Consommer un produit en FIFO (DLC la plus proche en premier)
+  domovra_consume_product:
+    url: "http://localhost:8098/api/stock/consume-product"
+    method: POST
+    headers:
+      Content-Type: application/json
+    payload: >
+      {"product_id": {{ product_id }}, "qty": {{ qty }}}
+
+  # Consommer un lot précis (lot_id obtenu via /api/product-info)
+  domovra_consume_lot:
+    url: "http://localhost:8098/api/stock/consume-lot"
+    method: POST
+    headers:
+      Content-Type: application/json
+    payload: >
+      {"lot_id": {{ lot_id }}, "qty": {{ qty }}}
+
+  # Ajouter du stock (livraison, réapprovisionnement)
+  domovra_add_lot:
+    url: "http://localhost:8098/api/stock/add-lot"
+    method: POST
+    headers:
+      Content-Type: application/json
+    payload: >
+      {
+        "product_id": {{ product_id }},
+        "location_id": {{ location_id }},
+        "qty": {{ qty }}
+      }
+```
+
+---
+
+#### `POST /api/stock/consume-product` — Consommation FIFO par produit
+
+Consomme une quantité d'un produit en FIFO automatique. Si un lot est épuisé, passe automatiquement au suivant.
+
+**Corps JSON :**
+```json
+{ "product_id": 5, "qty": 1.0, "reason": "automatisation lave-vaisselle" }
+```
+
+**Réponse :**
+```json
+{
+  "ok": true,
+  "consumed": 1.0,
+  "remaining_to_consume": 0.0,
+  "lots_affected": [{ "lot_id": 12, "consumed": 1.0, "remaining": 14.0 }]
+}
+```
+
+**Exemple — consommer 1 sac de pellets :**
+```yaml
+script:
+  consommer_pellets:
+    alias: "Consommer 1 sac de pellets"
+    sequence:
+      - service: rest_command.domovra_consume_product
+        data:
+          product_id: 5
+          qty: 1
+```
+
+**Exemple — automatisation poêle à pellets :**
+```yaml
+automation:
+  - alias: "Décrémenter stock pellets si poêle allumé"
+    trigger:
+      - platform: state
+        entity_id: switch.poele_pellets
+        to: "on"
+    action:
+      - service: rest_command.domovra_consume_product
+        data:
+          product_id: 5
+          qty: 1
+```
+
+---
+
+#### `POST /api/stock/consume-lot` — Consommation d'un lot précis
+
+Consomme une quantité d'un lot identifié par son `lot_id`. Obtenez les `lot_id` disponibles via `GET /api/product-info`.
+
+**Corps JSON :**
+```json
+{ "lot_id": 42, "qty": 0.5, "reason": "consommation manuelle" }
+```
+
+**Réponse :**
+```json
+{ "ok": true, "lot_id": 42, "before": 2.0, "consumed": 0.5, "after": 1.5, "closed": false }
+```
+
+**Exemple — consommer un lot spécifique via template :**
+```yaml
+script:
+  consommer_lot_specifique:
+    sequence:
+      - service: rest_command.domovra_consume_lot
+        data:
+          lot_id: "{{ states.sensor.domovra_pellets.attributes.fifo.lot_id }}"
+          qty: 1
+```
+
+---
+
+#### `POST /api/stock/add-lot` — Ajouter du stock
+
+Enregistre une livraison ou un réapprovisionnement pour un produit.
+
+**Corps JSON :**
+```json
+{
+  "product_id": 5,
+  "location_id": 2,
+  "qty": 15.0,
+  "best_before": "2026-12-31"
+}
+```
+
+> `best_before` et `frozen_on` sont optionnels. Format de date : `YYYY-MM-DD`.
+
+**Réponse :**
+```json
+{ "ok": true, "lot_id": 87, "product_id": 5, "location_id": 2, "qty": 15.0 }
+```
+
+**Exemple — livraison abonnement pellets (bouton physique) :**
+```yaml
+# Bouton Zigbee → ajoute 15 kg au stock + notification
+automation:
+  - alias: "Livraison pellets"
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.bouton_cave
+        to: "on"
+    action:
+      - service: rest_command.domovra_add_lot
+        data:
+          product_id: 5
+          location_id: 2
+          qty: 15
+      - service: notify.mobile_app_mon_telephone
+        data:
+          message: "📦 15 kg de pellets ajoutés au stock"
+```
+
+---
+
+### 🔍 Trouver les IDs
+
+| Information | Comment l'obtenir |
+|---|---|
+| `product_id` | `GET /api/stock/products` → champ `id` de chaque produit |
+| `location_id` | `GET /api/product-info?product_id=X` → champ `location_id` dans les lots |
+| `lot_id` | `GET /api/product-info?product_id=X` → champ `lot_id` dans les lots |
+
+---
+
+### 💡 Cas d'usage complets
+
+#### Lave-vaisselle — consomme 1 pastille à chaque cycle
+
+```yaml
+automation:
+  - alias: "Domovra — pastille lave-vaisselle"
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.lave_vaisselle_fin_cycle
+        to: "on"
+    action:
+      - service: rest_command.domovra_consume_product
+        data:
+          product_id: 8   # ID du produit "Pastilles lave-vaisselle"
+          qty: 1
+```
+
+#### Notification stock bas + réapprovisionnement automatique
+
+```yaml
+automation:
+  - alias: "Domovra — alerte + commande si stock critique"
+    trigger:
+      - platform: numeric_state
+        entity_id: sensor.domovra_pellets
+        below: 10
+    action:
+      - service: notify.mobile_app_mon_telephone
+        data:
+          title: "⚠️ Stock pellets critique"
+          message: "Il reste {{ states('sensor.domovra_pellets') }} kg. Pensez à commander !"
+```
+
+---
+
 ## 💾 Données & Persistance
 
 Toutes les données sont stockées dans le répertoire `/data` de l'add-on (mappé sur le volume persistent HA) :
@@ -199,6 +534,7 @@ Le détail de toutes les versions est disponible dans [CHANGELOG.md](../CHANGELO
 
 | Version | Date | Points clés |
 |---|---|---|
+| `1.4.64-dev.15` | 2026-08-15 | API REST HA complète (5 endpoints), historique prix, shopping semi-auto |
 | `1.4.64-dev.14` | 2026-08-15 | Options HA, traductions, CHANGELOG, vue groupée stocks |
 | `1.4.64-dev.13` | 2026-08-15 | SQLite WAL, logs, dead code, versions pinées |
 | `1.4.64-dev.12` | 2026-08-15 | Fix Panel Avancé, double push HA, race condition, scanner |
@@ -245,7 +581,7 @@ Pour signaler un bug ou proposer une fonctionnalité :
 | `fix:` | Correction de bug | `fix: éviter le crash si la DLC est vide` |
 | `security:` | Correctif de sécurité | `security: CSRF middleware sur les routes POST` |
 | `docs:` | Documentation uniquement | `docs: mise à jour du README` |
-| `chore:` | Maintenance / version | `chore: bump version to 1.4.64-dev.14` |
+| `chore:` | Maintenance / version | `chore: bump version to 1.4.64-dev.15` |
 | `refactor:` | Refactoring sans impact fonctionnel | `refactor: centraliser la gestion des erreurs db` |
 
 ---

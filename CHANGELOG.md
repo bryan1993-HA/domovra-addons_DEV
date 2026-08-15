@@ -5,6 +5,19 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/).
 
 ---
 
+## [1.4.64-dev.15] - 2026-08-15
+
+### Added
+- **#11** : API REST HA complète — 5 endpoints utilisables depuis HA sans composant custom : `GET /api/stock/products`, `GET /api/stock/low`, `POST /api/stock/consume-product` (FIFO), `POST /api/stock/consume-lot`, `POST /api/stock/add-lot`
+- **#11** : Chaque endpoint documenté avec exemples `rest_command`, `sensor: platform: rest` et automatisations HA directement dans le code source
+- **#9** : Tableau historique des prix par magasin dans la modale fiche produit (client-side, trié du plus récent au plus ancien)
+- **#8** : Checkbox liste de courses — ouvre le panel d'achat semi-auto au lieu de cocher directement ; confirmation via le formulaire d'achat
+
+### Fixed
+- **#11** : `POST /api/stock/consume-lot` refactorisé — l'ancienne implémentation requêtait une table inexistante (`lots` au lieu de `stock_lots`) et n'utilisait pas `db.consume_lot()`
+
+---
+
 ## [1.4.64-dev.14] - 2026-08-15
 
 ### Added
