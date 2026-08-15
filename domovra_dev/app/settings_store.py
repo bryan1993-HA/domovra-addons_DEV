@@ -24,6 +24,19 @@ DEFAULTS: Dict[str, Any] = {
     # Seuils DLC gérés par l'UI
     "retention_days_warning": 30,
     "retention_days_critical": 14,
+
+    # Panel Avancé
+    "enable_scanner": True,          # bool — active le scanner caméra dans Achats
+    "enable_off_block": True,        # bool — affiche le bloc EAN/OFF dans Achats
+    "ha_notifications": False,       # bool — notifications HA (non implémenté)
+
+    # Journal
+    "log_retention_days": 30,        # int >= 0
+    "log_consumption": True,         # bool
+    "log_add_remove": True,          # bool
+
+    # Divers
+    "ask_move_on_delete": False,     # bool
 }
 
 def _is_hex_color(s: str) -> bool:
@@ -34,57 +47,6 @@ def _is_hex_color(s: str) -> bool:
         return False
     h = s[1:]
     return len(h) in (3, 6) and all(c in "0123456789abcdefABCDEF" for c in h)
-
-def _coerce_types(raw: Dict[str, Any]) -> Dict[str, Any]:
-    clean_in = _only_known_keys(raw or {})
-    out = DEFAULTS.copy()
-    out.update(clean_in)
-
-    # Theme
-    if out["theme"] not in ("auto", "light", "dark"):
-        out["theme"] = "auto"
-
-    # Sidebar compact
-    out["sidebar_compact"] = bool(out.get("sidebar_compact", False))
-
-    # Toasts
-    try:
-        out["toast_duration"] = max(500, int(out.get("toast_duration", DEFAULTS["toast_duration"])))
-    except Exception:
-        out["toast_duration"] = DEFAULTS["toast_duration"]
-
-    for k in ("toast_ok", "toast_warn", "toast_error"):
-        v = str(out.get(k, DEFAULTS[k])).strip()
-        out[k] = v if _is_hex_color(v) else DEFAULTS[k]
-
-    # Seuils DLC >= 0
-    def _int_ge0(v, dflt):
-        try:
-            return max(0, int(v))
-        except Exception:
-            return dflt
-
-    out["retention_days_warning"] = _int_ge0(out.get("retention_days_warning", DEFAULTS["retention_days_warning"]), DEFAULTS["retention_days_warning"])
-    out["retention_days_critical"] = _int_ge0(out.get("retention_days_critical", DEFAULTS["retention_days_critical"]), DEFAULTS["retention_days_critical"])
-
-    # Garde-fou logique
-    if out["retention_days_critical"] > out["retention_days_warning"]:
-        out["retention_days_critical"] = out["retention_days_warning"]
-
-    return out
-
-
-def ensure_data_dir() -> None:
-    os.makedirs(DATA_DIR, exist_ok=True)
-
-def _atomic_write_json(path: str, payload: Dict[str, Any]) -> None:
-    fd, tmp_path = tempfile.mkstemp(
-        dir=os.path.dirname(path), prefix="settings.", suffix=".tmp"
-    )
-    os.close(fd)
-    with open(tmp_path, "w", encoding="utf-8") as f:
-        json.dump(payload, f, ensure_ascii=False, indent=2)
-    shutil.move(tmp_path, path)
 
 def _only_known_keys(raw: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -106,15 +68,20 @@ def _coerce_types(raw: Dict[str, Any]) -> Dict[str, Any]:
     if out["theme"] not in ("auto", "light", "dark"):
         out["theme"] = "auto"
 
-    out["sidebar_compact"] = bool(out.get("sidebar_compact"))
+    # Booleans
+    for k in ("sidebar_compact", "enable_scanner", "enable_off_block",
+              "ha_notifications", "log_consumption", "log_add_remove",
+              "ask_move_on_delete"):
+        out[k] = bool(out.get(k, DEFAULTS[k]))
 
-    # Seuils DLC >= 0
+    # Entiers >= 0
     def _int_ge0(v, dflt):
         try:
             return max(0, int(v))
         except Exception:
             return dflt
 
+    out["toast_duration"] = max(500, _int_ge0(out.get("toast_duration"), DEFAULTS["toast_duration"]))
     out["retention_days_warning"] = _int_ge0(
         out.get("retention_days_warning", DEFAULTS["retention_days_warning"]),
         DEFAULTS["retention_days_warning"],
@@ -123,12 +90,34 @@ def _coerce_types(raw: Dict[str, Any]) -> Dict[str, Any]:
         out.get("retention_days_critical", DEFAULTS["retention_days_critical"]),
         DEFAULTS["retention_days_critical"],
     )
+    out["log_retention_days"] = _int_ge0(
+        out.get("log_retention_days", DEFAULTS["log_retention_days"]),
+        DEFAULTS["log_retention_days"],
+    )
 
     # Garde-fou logique : rouge ≤ jaune
     if out["retention_days_critical"] > out["retention_days_warning"]:
         out["retention_days_critical"] = out["retention_days_warning"]
 
+    # Couleurs toasts
+    for k in ("toast_ok", "toast_warn", "toast_error"):
+        v = str(out.get(k, DEFAULTS[k])).strip()
+        out[k] = v if _is_hex_color(v) else DEFAULTS[k]
+
     return out
+
+
+def ensure_data_dir() -> None:
+    os.makedirs(DATA_DIR, exist_ok=True)
+
+def _atomic_write_json(path: str, payload: Dict[str, Any]) -> None:
+    fd, tmp_path = tempfile.mkstemp(
+        dir=os.path.dirname(path), prefix="settings.", suffix=".tmp"
+    )
+    os.close(fd)
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
+    shutil.move(tmp_path, path)
 
 def load_settings() -> Dict[str, Any]:
     ensure_data_dir()
@@ -141,11 +130,15 @@ def load_settings() -> Dict[str, Any]:
         with open(SETTINGS_PATH, "r", encoding="utf-8") as f:
             raw = json.load(f)
 
-        # Détecte et prune les clés inconnues (legacy)
+        # Détecte les clés inconnues (legacy) et les nouvelles clés manquantes
         unknown = set(raw.keys()) - set(DEFAULTS.keys())
-        if unknown:
-            LOGGER.info("Nettoyage des clés obsolètes dans settings.json: %s", sorted(unknown))
-            cleaned = _coerce_types(raw)  # _coerce_types ne garde que les clés connues
+        missing = set(DEFAULTS.keys()) - set(raw.keys())
+        if unknown or missing:
+            if unknown:
+                LOGGER.info("Nettoyage des clés obsolètes dans settings.json: %s", sorted(unknown))
+            if missing:
+                LOGGER.info("Ajout des nouvelles clés dans settings.json: %s", sorted(missing))
+            cleaned = _coerce_types(raw)
             _atomic_write_json(SETTINGS_PATH, cleaned)
             return cleaned
 

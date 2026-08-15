@@ -207,14 +207,19 @@ app.include_router(export_import_router)
 # ============================================================
 
 async def _ha_push_loop() -> None:
-    """Push HA sensors every 5 minutes in the background."""
+    """Push initial au démarrage, puis toutes les 5 minutes en boucle."""
     from services.ha_entities import refresh_and_push
+    # Push immédiat au démarrage (dans le contexte asyncio, pas de thread séparé)
+    try:
+        refresh_and_push()
+    except Exception as e:
+        logger.warning("HA push initial error: %s", e)
     while True:
         await asyncio.sleep(300)
         try:
             refresh_and_push()
         except Exception as e:
-            logger.debug("HA push loop: %s", e)
+            logger.warning("HA push loop error: %s", e)
 
 
 @app.on_event("startup")
@@ -240,5 +245,3 @@ async def _startup() -> None:
 
     # HA sensors : push initial + boucle périodique toutes les 5 min
     asyncio.create_task(_ha_push_loop())
-    from services.ha_entities import schedule_ha_push
-    schedule_ha_push()

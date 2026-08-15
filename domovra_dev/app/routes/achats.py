@@ -1,6 +1,7 @@
 # domovra/app/routes/achats.py
 from __future__ import annotations
 
+import datetime
 import sqlite3
 from typing import Optional, Dict, Any
 
@@ -12,10 +13,7 @@ from config import DB_PATH
 from utils.http import ingress_base, render as render_with_env
 from services.events import log_event
 from services.ha_entities import schedule_ha_push
-from db import (
-    list_products, list_locations,
-    add_lot, list_lots, update_lot
-)
+from db import list_products, list_locations
 
 router = APIRouter()
 
@@ -56,30 +54,54 @@ def _add_or_merge_lot(
 ) -> Dict[str, Any]:
     """
     S'il existe déjà un lot avec la signature (product_id, location_id, best_before, frozen_on),
-    on incrémente sa quantité. Sinon, on crée un lot.
+    on incrémente sa quantité dans une transaction atomique (BEGIN IMMEDIATE).
+    Sinon, on crée un lot.
     """
     bb = best_before or None
     fr = frozen_on or None
+    today = datetime.date.today().isoformat()
 
-    for lot in list_lots():
-        if int(lot["product_id"]) != int(product_id):
-            continue
-        if int(lot["location_id"]) != int(location_id):
-            continue
-        if (lot.get("best_before") or None) == bb and (lot.get("frozen_on") or None) == fr:
-            new_qty = float(lot.get("qty") or 0) + float(qty_delta or 0)
-            update_lot(int(lot["id"]), new_qty, int(location_id), fr, bb)
-            return {"action": "merge", "lot_id": int(lot["id"]), "new_qty": new_qty}
+    with _conn() as c:
+        c.execute("BEGIN IMMEDIATE")
+        existing = c.execute(
+            """
+            SELECT id, qty FROM stock_lots
+            WHERE product_id=? AND location_id=? AND status='open'
+              AND COALESCE(best_before,'') = COALESCE(?,'')
+              AND COALESCE(frozen_on,'')   = COALESCE(?,'')
+            LIMIT 1
+            """,
+            (int(product_id), int(location_id), bb, fr),
+        ).fetchone()
 
-    lid = add_lot(int(product_id), int(location_id), float(qty_delta or 0), fr, bb)
-    return {"action": "insert", "lot_id": int(lid), "new_qty": float(qty_delta or 0)}
+        if existing:
+            new_qty = float(existing["qty"] or 0) + float(qty_delta or 0)
+            c.execute(
+                "UPDATE stock_lots SET qty=?, location_id=?, frozen_on=?, best_before=? WHERE id=?",
+                (new_qty, int(location_id), fr, bb, int(existing["id"])),
+            )
+            c.commit()
+            return {"action": "merge", "lot_id": int(existing["id"]), "new_qty": new_qty}
+
+        cur = c.execute(
+            """INSERT INTO stock_lots(product_id,location_id,qty,frozen_on,best_before,created_on,initial_qty,status)
+               VALUES(?,?,?,?,?,?,?,?)""",
+            (int(product_id), int(location_id), float(qty_delta or 0), fr, bb, today, float(qty_delta or 0), "open"),
+        )
+        lot_id = cur.lastrowid
+        c.execute(
+            "INSERT INTO movements(lot_id,type,qty,ts,note) VALUES(?,?,?,?,?)",
+            (lot_id, "IN", float(qty_delta or 0), today, None),
+        )
+        c.commit()
+        return {"action": "insert", "lot_id": int(lot_id), "new_qty": float(qty_delta or 0)}
 
 
 # =============== Routes ===============
 
 @router.get("/achats", response_class=HTMLResponse)
 def achats_page(request: Request):
-    """Formulaire d’ajout d’entrées de stock."""
+    """Formulaire d'ajout d'entrées de stock."""
     base = ingress_base(request)
     return render_with_env(
         request.app.state.templates,
@@ -113,9 +135,9 @@ def achats_add_action(
 ):
     """
     Ajoute un achat :
-      - fusionne avec un lot équivalent si possible,
+      - fusionne avec un lot équivalent si possible (transaction atomique),
       - sinon crée un lot,
-      - enrichit la ligne de lot avec les infos d’achat (prix, ean, etc.),
+      - enrichit la ligne de lot avec les infos d'achat (prix, ean, etc.),
       - met à jour le code-barres produit si absent.
     """
 
@@ -173,7 +195,7 @@ def achats_add_action(
     ean_digits = _clean_barcode(ean)
     price_num = _num_or_none(price_total)
 
-    # Ajout ou merge du lot
+    # Ajout ou merge du lot (transaction atomique)
     res = _add_or_merge_lot(
         int(product_id), int(location_id),
         float(qty_delta),
@@ -196,10 +218,10 @@ def achats_add_action(
                     )
                     c.commit()
         except Exception:
-            # volontairement silencieux (pas bloquant pour l’ajout)
+            # volontairement silencieux (pas bloquant pour l'ajout)
             pass
 
-    # Enrichit la ligne de lot (infos d’achat entrées utilisateur)
+    # Enrichit la ligne de lot (infos d'achat entrées utilisateur)
     try:
         lot_id = int(res["lot_id"])
         with _conn() as c:
@@ -231,7 +253,7 @@ def achats_add_action(
                 c.execute(f"UPDATE stock_lots SET {', '.join(sets)} WHERE id=?", params)
                 c.commit()
     except Exception:
-        # enrichissement best-effort; on n’échoue pas l’opération principale
+        # enrichissement best-effort; on n'échoue pas l'opération principale
         pass
 
     # Journalisation

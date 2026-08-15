@@ -197,7 +197,7 @@
                 <h2>Ajouter au stock</h2>
                 <span class="muted">→ page dédiée aux entrées (scan ou saisie)</span>
             </div>
-            <button type="button" class="btn" id="btn_scan_live" title="Scanner en direct">🎥</button>
+            {% if SETTINGS.enable_scanner|default(true) %}<button type="button" class="btn" id="btn_scan_live" title="Scanner en direct">🎥</button>{% endif %}
         </div>
 
         <form id="achats_form" method="post" action="{{ BASE }}achats/add">
@@ -209,6 +209,7 @@
                 </div>
 
                 <div class="row">
+                    {% if SETTINGS.enable_off_block|default(true) %}
                     <!-- EAN -->
                     <div class="col-6">
                         <div class="label">Code-barres (EAN)</div>
@@ -219,6 +220,7 @@
                                 title="Rechercher le produit par EAN">🔎</button>
                         </div>
                     </div>
+                    {% endif %}
 
                     <!-- Fiche produit (parent) obligatoire -->
                     <div class="col-6">
@@ -739,7 +741,7 @@
             multInput?.addEventListener(ev, updateCalcs);
             priceTotal?.addEventListener(ev, updateCalcs);
         });
-        $('#btn_reset')?.addEventListener('click', () => setTimeout(updateCalcs, 0));
+        $('#btn_reset')?.addEventListener('click', () => { nameTouched = false; brandTouched = false; setTimeout(updateCalcs, 0); });
 
         productSel?.addEventListener('change', () => {
             const opt = productSel.options[productSel.selectedIndex];

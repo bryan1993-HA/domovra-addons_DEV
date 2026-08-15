@@ -72,10 +72,10 @@ def _push_state(token: str, entity_id: str, state: Any, attributes: dict) -> boo
         with urllib.request.urlopen(req, timeout=5) as resp:
             return resp.status in (200, 201)
     except urllib.error.URLError as e:
-        logger.debug("HA push %s: %s", entity_id, e)
+        logger.warning("HA push failed for %s: %s", entity_id, e)
         return False
     except Exception as e:
-        logger.debug("HA push %s unexpected: %s", entity_id, e)
+        logger.error("HA push unexpected error for %s: %s", entity_id, e)
         return False
 
 
@@ -96,7 +96,7 @@ def push_sensors(summary: dict) -> None:
             pushed += 1
 
     if pushed:
-        logger.debug("HA sensors pushed: %d/%d", pushed, len(SENSORS))
+        logger.info("HA sensors pushed: %d/%d", pushed, len(SENSORS))
 
 
 def refresh_and_push() -> None:
@@ -106,7 +106,7 @@ def refresh_and_push() -> None:
         summary = ha_summary()
         push_sensors(summary)
     except Exception as e:
-        logger.debug("HA refresh_and_push error: %s", e)
+        logger.error("HA refresh_and_push error: %s", e)
 
 
 def schedule_ha_push() -> None:
