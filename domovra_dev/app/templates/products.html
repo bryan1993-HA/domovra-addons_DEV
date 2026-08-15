@@ -333,6 +333,7 @@ Astuce : tu peux combiner (ex. « ddm produits laitiers »)."></span>
         style="border:1px dashed var(--line);border-radius:10px;padding:12px;min-height:240px">
         <!-- Graphique rendu en JS (renderPriceChart) -->
       </div>
+      <div id="v-price-table" style="margin-top:10px"></div>
     </div>
 
     <div class="row" style="justify-content:flex-end;gap:8px">
@@ -895,6 +896,44 @@ Astuce : tu peux combiner (ex. « ddm produits laitiers »)."></span>
     container.appendChild(svg);
   }
 
+  function _esc(s) {
+    return String(s ?? '')
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function renderPriceTable(container, rows, currency) {
+    if (!container) return;
+    container.innerHTML = '';
+    if (!Array.isArray(rows) || rows.length === 0) {
+      container.innerHTML = '<span style="color:var(--muted);font-size:.8rem">Aucun achat enregistré.</span>';
+      return;
+    }
+    const sorted = [...rows].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    const cur = currency || '€';
+    let html = '<table style="width:100%;border-collapse:collapse;font-size:.82rem">'
+      + '<thead><tr style="border-bottom:1px solid var(--line)">'
+      + '<th style="text-align:left;padding:4px 8px;font-weight:600">Date</th>'
+      + '<th style="text-align:left;padding:4px 8px;font-weight:600">Magasin</th>'
+      + '<th style="text-align:right;padding:4px 8px;font-weight:600">Prix total</th>'
+      + '</tr></thead><tbody>';
+    sorted.forEach((r, i) => {
+      const date = (r.date || '').slice(0, 10) || '—';
+      const store = (r.source || '').trim() || '—';
+      const price = r.price != null
+        ? Number(r.price).toFixed(2).replace('.', ',') + '\u202f' + cur
+        : '—';
+      const bg = i % 2 === 0 ? '' : 'background:var(--surface2,rgba(128,128,128,.05))';
+      html += '<tr style="' + bg + '">'
+        + '<td style="padding:4px 8px">' + _esc(date) + '</td>'
+        + '<td style="padding:4px 8px">' + _esc(store) + '</td>'
+        + '<td style="text-align:right;padding:4px 8px">' + _esc(price) + '</td>'
+        + '</tr>';
+    });
+    html += '</tbody></table>';
+    container.innerHTML = html;
+  }
+
 
   document.addEventListener('click', (e) => {
     const btn = e.target.closest('.js-view-open');
@@ -944,6 +983,7 @@ Astuce : tu peux combiner (ex. « ddm produits laitiers »)."></span>
     let history = [];
     try { history = JSON.parse(btn.dataset.priceHistory || '[]'); } catch { }
     renderPriceChart(document.getElementById('v-price-chart'), history, currency);
+    renderPriceTable(document.getElementById('v-price-table'), history, currency);
 
     // Dernier achat = date la plus récente de l'historique
     if (Array.isArray(history) && history.length) {

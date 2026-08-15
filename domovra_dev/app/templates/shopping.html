@@ -522,7 +522,23 @@
   /* ── Checkbox toggle ─────────────────────────────────────────────────── */
   document.querySelectorAll(".sh-check").forEach(cb => {
     cb.addEventListener("change", function() {
-      const form = document.getElementById("toggle-form-" + this.dataset.itemId);
+      const itemId = this.dataset.itemId;
+
+      if (this.checked) {
+        // Cocher → ouvrir le panneau Acheter pour saisir les détails
+        const panel = document.getElementById("bp-" + itemId);
+        if (panel) {
+          this.checked = false; // on revert : la coche sera posée par mark_bought
+          document.querySelectorAll(".sh-buy-panel").forEach(p => p.hidden = true);
+          panel.hidden = false;
+          prefillPanel(panel);
+          panel.querySelector("input,select")?.focus({ preventScroll: true });
+          return;
+        }
+      }
+
+      // Décocher (ou panneau absent) → toggle direct
+      const form = document.getElementById("toggle-form-" + itemId);
       if (form) form.submit();
     });
   });
