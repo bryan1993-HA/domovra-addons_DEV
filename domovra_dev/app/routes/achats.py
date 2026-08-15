@@ -13,7 +13,7 @@ from config import DB_PATH
 from utils.http import ingress_base, render as render_with_env
 from services.events import log_event
 from services.ha_entities import schedule_ha_push
-from db import list_products, list_locations
+from db import list_products, list_locations, register_barcode_for_product
 
 router = APIRouter()
 
@@ -138,7 +138,7 @@ def achats_add_action(
       - fusionne avec un lot équivalent si possible (transaction atomique),
       - sinon crée un lot,
       - enrichit la ligne de lot avec les infos d'achat (prix, ean, etc.),
-      - met à jour le code-barres produit si absent.
+      - enregistre l'EAN dans product_barcodes (#10 multi-EAN).
     """
 
     # Multiplieur sûr (>= 1)
@@ -202,8 +202,11 @@ def achats_add_action(
         best_before or None, frozen_on or None,
     )
 
-    # Si EAN fourni et produit sans code-barres -> on le remplit
+    # Si EAN fourni :
+    # 1) Enregistre dans product_barcodes (#10 multi-EAN, INSERT OR IGNORE)
+    # 2) Backfill products.barcode si vide (rétro-compat)
     if ean_digits:
+        register_barcode_for_product(int(product_id), ean_digits)
         try:
             with _conn() as c:
                 row = c.execute(

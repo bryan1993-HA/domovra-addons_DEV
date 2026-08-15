@@ -479,6 +479,20 @@ Astuce : tu peux combiner (ex. « ddm produits laitiers »)."></span>
       </div>
     </div>
 
+    <!-- ── Codes-barres / EAN multiples (#10) ── -->
+    <div style="margin-top:6px">
+      <div class="label">Codes-barres EAN</div>
+      <div id="dlg-barcodes-list" style="display:flex;flex-wrap:wrap;gap:6px;min-height:28px;margin-bottom:6px"></div>
+      <div style="display:flex;gap:6px">
+        <input type="text" id="dlg-bc-input" placeholder="EAN (chiffres)" inputmode="numeric"
+               style="flex:1;font-family:monospace" maxlength="14">
+        <input type="text" id="dlg-bc-label" placeholder="Libellé (ex. Grand format)"
+               style="flex:1">
+        <button type="button" id="dlg-bc-add" class="secondary" style="white-space:nowrap">+ Ajouter</button>
+      </div>
+      <div id="dlg-bc-msg" class="muted" style="font-size:.8em;min-height:18px;margin-top:2px"></div>
+    </div>
+
     <div class="dlg-actions">
       <button type="button" class="btn-cancel" onclick="document.getElementById('dlg-edit').close()">Annuler</button>
       <button class="secondary btn-save">Enregistrer</button>
@@ -1203,6 +1217,115 @@ Astuce : tu peux combiner (ex. « ddm produits laitiers »)."></span>
 
     nameInput.addEventListener('input', applyGate);
     applyGate(); // état initial au chargement
+  })();
+
+  // ===== Gestion multi-EAN dans la modale d'édition (#10) =====
+  (function setupBarcodeManager() {
+    const BASE = "{{ BASE }}";
+    let _currentPid = null;
+
+    function _escHtml(s) {
+      return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    }
+
+    function _bcMsg(msg, isErr) {
+      const el = document.getElementById("dlg-bc-msg");
+      if (!el) return;
+      el.textContent = msg || "";
+      el.style.color = isErr ? "var(--color-red, #c00)" : "var(--color-muted, #666)";
+    }
+
+    function _renderBarcodes(barcodes) {
+      const list = document.getElementById("dlg-barcodes-list");
+      if (!list) return;
+      list.innerHTML = "";
+      if (!barcodes || !barcodes.length) {
+        list.innerHTML = '<span class="muted" style="font-size:.85em">Aucun EAN enregistré</span>';
+        return;
+      }
+      barcodes.forEach(function(bc) {
+        const chip = document.createElement("span");
+        chip.style.cssText = "display:inline-flex;align-items:center;gap:4px;background:var(--surface2,#f0f0f0);border-radius:4px;padding:2px 6px;font-size:.85em;font-family:monospace";
+        chip.innerHTML = _escHtml(bc.barcode) +
+          (bc.label ? ' <em style="font-family:sans-serif;font-style:normal;opacity:.7">(' + _escHtml(bc.label) + ")</em>" : "") +
+          ' <button type="button" data-bcid="' + bc.id + '" title="Supprimer" ' +
+          'style="background:none;border:none;cursor:pointer;color:#c00;padding:0 2px;font-size:1em">✕</button>';
+        chip.querySelector("button").addEventListener("click", function() {
+          _deleteBarcode(bc.id);
+        });
+        list.appendChild(chip);
+      });
+    }
+
+    function _loadBarcodes(pid) {
+      if (!pid) return;
+      fetch(BASE + "api/product/" + pid + "/barcodes")
+        .then(function(r) { return r.json(); })
+        .then(function(data) { _renderBarcodes(data.barcodes || []); })
+        .catch(function() { _bcMsg("Erreur chargement EAN", true); });
+    }
+
+    function _addBarcode() {
+      if (!_currentPid) return;
+      const inp = document.getElementById("dlg-bc-input");
+      const lbl = document.getElementById("dlg-bc-label");
+      const barcode = (inp ? inp.value : "").replace(/\D/g, "");
+      if (!barcode) { _bcMsg("EAN invalide (chiffres uniquement)", true); return; }
+      _bcMsg("Enregistrement…");
+      fetch(BASE + "api/product/" + _currentPid + "/barcodes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ barcode: barcode, label: lbl ? lbl.value.trim() : "" })
+      })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          if (data.ok) {
+            if (inp) inp.value = "";
+            if (lbl) lbl.value = "";
+            _bcMsg("EAN ajouté");
+            _loadBarcodes(_currentPid);
+          } else {
+            _bcMsg(data.error === "barcode already exists" ? "EAN déjà enregistré" : (data.error || "Erreur"), true);
+          }
+        })
+        .catch(function() { _bcMsg("Erreur réseau", true); });
+    }
+
+    function _deleteBarcode(bcId) {
+      fetch(BASE + "api/product/barcodes/" + bcId, { method: "DELETE" })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          if (data.ok) {
+            _bcMsg("EAN supprimé");
+            _loadBarcodes(_currentPid);
+          } else {
+            _bcMsg(data.error || "Erreur suppression", true);
+          }
+        })
+        .catch(function() { _bcMsg("Erreur réseau", true); });
+    }
+
+    // Brancher sur l'ouverture de la modale d'édition
+    document.addEventListener("click", function(e) {
+      const edit = e.target.closest(".js-edit-open");
+      if (!edit) return;
+      _currentPid = edit.dataset.id || null;
+      _bcMsg("");
+      const inp = document.getElementById("dlg-bc-input");
+      const lbl = document.getElementById("dlg-bc-label");
+      if (inp) inp.value = "";
+      if (lbl) lbl.value = "";
+      if (_currentPid) _loadBarcodes(_currentPid);
+    });
+
+    const addBtn = document.getElementById("dlg-bc-add");
+    if (addBtn) addBtn.addEventListener("click", _addBarcode);
+
+    const bcInput = document.getElementById("dlg-bc-input");
+    if (bcInput) bcInput.addEventListener("keydown", function(e) {
+      if (e.key === "Enter") { e.preventDefault(); _addBarcode(); }
+    });
   })();
 </script>
 {% endblock %}

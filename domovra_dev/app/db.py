@@ -12,6 +12,12 @@ def _column_exists(c: sqlite3.Connection, table: str, column: str) -> bool:
     rows = c.execute(f"PRAGMA table_info({table})").fetchall()
     return any(r["name"] == column for r in rows)
 
+def _table_exists(c: sqlite3.Connection, table: str) -> bool:
+    row = c.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table,)
+    ).fetchone()
+    return row is not None
+
 def init_db():
     with _conn() as c:
         # ----- WAL mode + busy timeout (robustesse multi-accès)
@@ -146,6 +152,34 @@ def init_db():
             c.execute("ALTER TABLE movements ADD COLUMN location_from_id INTEGER")
         if not _column_exists(c, "movements", "location_to_id"):
             c.execute("ALTER TABLE movements ADD COLUMN location_to_id INTEGER")
+
+        # ----- #10 : Table multi-EAN par produit
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS product_barcodes(
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                product_id INTEGER NOT NULL,
+                barcode    TEXT    NOT NULL,
+                label      TEXT    DEFAULT '',
+                FOREIGN KEY(product_id) REFERENCES products(id),
+                UNIQUE(barcode)
+            )
+        """)
+        c.execute("""
+            CREATE INDEX IF NOT EXISTS idx_product_barcodes_pid
+            ON product_barcodes(product_id)
+        """)
+
+        # Migration : copie les barcodes existants de products.barcode → product_barcodes
+        if _table_exists(c, "product_barcodes"):
+            try:
+                c.execute("""
+                    INSERT OR IGNORE INTO product_barcodes(product_id, barcode, label)
+                    SELECT id, barcode, ''
+                    FROM products
+                    WHERE barcode IS NOT NULL AND barcode != ''
+                """)
+            except Exception:
+                pass
 
         # ----- Backfill utiles
         try:
@@ -293,7 +327,18 @@ def add_product(
                  expiry_kind, default_freeze_shelf_days, no_freeze, category, parent_id, no_expiry)
             )
             c.commit()
-            return cur.lastrowid
+            pid = cur.lastrowid
+            # Enregistre aussi le barcode dans product_barcodes si fourni
+            if barcode and pid:
+                try:
+                    c.execute(
+                        "INSERT OR IGNORE INTO product_barcodes(product_id, barcode, label) VALUES(?,?,'')",
+                        (pid, barcode)
+                    )
+                    c.commit()
+                except Exception:
+                    pass
+            return pid
         except sqlite3.IntegrityError:
             row = c.execute("SELECT id FROM products WHERE name=?", (name,)).fetchone()
             if row:
@@ -474,15 +519,124 @@ def update_product(
 
 
 def delete_product(product_id: int):
-    """Supprime un produit + lots + mouvements liés."""
+    """Supprime un produit + lots + mouvements liés + barcodes."""
     with _conn() as c:
         lot_ids = [r["id"] for r in c.execute("SELECT id FROM stock_lots WHERE product_id=?", (product_id,))]
         if lot_ids:
             ph = ",".join("?" * len(lot_ids))
             c.execute(f"DELETE FROM movements WHERE lot_id IN ({ph})", lot_ids)
             c.execute(f"DELETE FROM stock_lots WHERE id IN ({ph})", lot_ids)
+        c.execute("DELETE FROM product_barcodes WHERE product_id=?", (product_id,))
         c.execute("DELETE FROM products WHERE id=?", (product_id,))
         c.commit()
+
+
+# ---------- Multi-EAN (#10)
+
+def get_product_barcodes(product_id: int) -> list:
+    """Retourne tous les codes-barres associés à un produit."""
+    with _conn() as c:
+        rows = c.execute(
+            "SELECT id, product_id, barcode, COALESCE(label,'') AS label "
+            "FROM product_barcodes WHERE product_id=? ORDER BY id",
+            (int(product_id),)
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def add_product_barcode(product_id: int, barcode: str, label: str = "") -> int | None:
+    """
+    Ajoute un code-barres à un produit.
+    Retourne l'id créé, ou None si le barcode existe déjà (UNIQUE).
+    Met aussi à jour products.barcode si le produit n'en a pas encore.
+    """
+    barcode = "".join(ch for ch in (barcode or "") if ch.isdigit())
+    if not barcode:
+        return None
+    label = (label or "").strip()
+    with _conn() as c:
+        try:
+            cur = c.execute(
+                "INSERT INTO product_barcodes(product_id, barcode, label) VALUES(?,?,?)",
+                (int(product_id), barcode, label)
+            )
+            c.commit()
+            bc_id = cur.lastrowid
+            # Backfill products.barcode si vide
+            try:
+                row = c.execute(
+                    "SELECT COALESCE(barcode,'') AS barcode FROM products WHERE id=?",
+                    (int(product_id),)
+                ).fetchone()
+                if row and not (row["barcode"] or "").strip():
+                    c.execute(
+                        "UPDATE products SET barcode=? WHERE id=?",
+                        (barcode, int(product_id))
+                    )
+                    c.commit()
+            except Exception:
+                pass
+            return bc_id
+        except sqlite3.IntegrityError:
+            return None
+
+
+def delete_product_barcode(bc_id: int) -> bool:
+    """Supprime un code-barres par son id. Retourne True si supprimé."""
+    with _conn() as c:
+        cur = c.execute("DELETE FROM product_barcodes WHERE id=?", (int(bc_id),))
+        c.commit()
+        return cur.rowcount > 0
+
+
+def find_product_by_barcode(code: str) -> dict | None:
+    """
+    Recherche un produit par code-barres.
+    Cherche d'abord dans product_barcodes (multi-EAN), puis dans products.barcode (rétro-compat).
+    Retourne {id, name, barcode} ou None.
+    """
+    code = "".join(ch for ch in (code or "") if not ch.isspace())
+    if not code:
+        return None
+    with _conn() as c:
+        # 1) Cherche dans product_barcodes
+        row = c.execute(
+            """SELECT p.id, p.name, pb.barcode
+               FROM product_barcodes pb
+               JOIN products p ON p.id = pb.product_id
+               WHERE REPLACE(pb.barcode, ' ', '') = ?
+               LIMIT 1""",
+            (code,)
+        ).fetchone()
+        if row:
+            return dict(row)
+        # 2) Fallback : products.barcode (backward compat)
+        row = c.execute(
+            "SELECT id, name, COALESCE(barcode,'') AS barcode "
+            "FROM products WHERE REPLACE(COALESCE(barcode,''), ' ', '') = ? LIMIT 1",
+            (code,)
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def register_barcode_for_product(product_id: int, barcode: str) -> None:
+    """
+    Enregistre un EAN dans product_barcodes (INSERT OR IGNORE).
+    Appelé depuis achats.py après chaque achat avec EAN.
+    """
+    barcode = "".join(ch for ch in (barcode or "") if ch.isdigit())
+    if not barcode:
+        return
+    with _conn() as c:
+        try:
+            c.execute(
+                "INSERT OR IGNORE INTO product_barcodes(product_id, barcode, label) VALUES(?,?,'')",
+                (int(product_id), barcode)
+            )
+            c.commit()
+        except Exception:
+            pass
+
 
 # ---------- Lots
 def _today():
@@ -792,7 +946,6 @@ def list_product_insights():
             }
         return out
 
-# APRÈS — À AJOUTER dans db.py
 def list_price_history_for_product(product_id: int, limit: int = 10):
     """
     Renvoie les dernières lignes de prix pour un produit à partir des lots saisis.

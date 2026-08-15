@@ -11,7 +11,13 @@
 #   GET  /api/stock/products              → liste produits + stocks
 #   GET  /api/stock/low                   → produits sous le seuil min
 #   GET  /api/product-info?product_id=X   → détail produit + lots FIFO
-#   GET  /api/product/by_barcode?code=X   → recherche par EAN
+#   GET  /api/product/by_barcode?code=X   → recherche par EAN (multi-EAN)
+#
+#   Multi-EAN (#10)
+#   ---------------
+#   GET    /api/product/{id}/barcodes     → liste EAN du produit
+#   POST   /api/product/{id}/barcodes     → ajouter un EAN
+#   DELETE /api/product/barcodes/{bc_id}  → supprimer un EAN
 #
 #   Écriture (automatisations HA)
 #   -----------------------------
@@ -31,7 +37,7 @@ import re
 import logging
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Query, Body
+from fastapi import APIRouter, Query, Body, Path
 from fastapi.responses import JSONResponse
 
 from config import DB_PATH, get_retention_thresholds
@@ -41,6 +47,10 @@ from db import (
     consume_lot,
     add_lot,
     list_low_stock_products,
+    get_product_barcodes,
+    add_product_barcode,
+    delete_product_barcode,
+    find_product_by_barcode,
 )
 from services.events import log_event
 from services.ha_entities import schedule_ha_push
@@ -579,28 +589,114 @@ def api_product_info(product_id: int = Query(..., ge=1)) -> JSONResponse:
 
 
 # ─────────────────────────────────────────────
-# GET /api/product/by_barcode
+# GET /api/product/by_barcode  (#10 multi-EAN)
 # ─────────────────────────────────────────────
 
 @router.get("/api/product/by_barcode")
 def api_product_by_barcode(code: str) -> JSONResponse:
-    """Recherche un produit par code-barres EAN."""
+    """
+    Recherche un produit par code-barres EAN.
+    Cherche dans tous les EAN associés au produit (multi-EAN, #10),
+    avec fallback sur products.barcode pour la rétro-compatibilité.
+    """
     code = (code or "").strip().replace(" ", "")
     if not code:
         return JSONResponse({"error": "missing code"}, status_code=400)
 
-    import sqlite3
-    with sqlite3.connect(DB_PATH) as c:
-        c.row_factory = sqlite3.Row
-        row = c.execute(
-            "SELECT id, name, COALESCE(barcode,'') AS barcode "
-            "FROM products WHERE REPLACE(COALESCE(barcode,''), ' ', '') = ? LIMIT 1",
-            (code,),
-        ).fetchone()
-
-    if not row:
+    result = find_product_by_barcode(code)
+    if not result:
         return JSONResponse({"error": "not found"}, status_code=404)
-    return JSONResponse({"id": row["id"], "name": row["name"], "barcode": row["barcode"]})
+    return JSONResponse({
+        "id": result["id"],
+        "name": result["name"],
+        "barcode": result.get("barcode") or code,
+    })
+
+
+# ─────────────────────────────────────────────
+# GET /api/product/{product_id}/barcodes
+# ─────────────────────────────────────────────
+
+@router.get("/api/product/{product_id}/barcodes")
+def api_list_barcodes(product_id: int = Path(..., ge=1)) -> JSONResponse:
+    """
+    Retourne tous les codes-barres associés à un produit.
+
+    Réponse :
+        {
+          "product_id": 5,
+          "barcodes": [
+            {"id": 1, "barcode": "3017620425035", "label": ""},
+            {"id": 2, "barcode": "3017620425036", "label": "Grand format"}
+          ]
+        }
+    """
+    products = list_products() or []
+    if not any(int(p["id"]) == product_id for p in products):
+        return JSONResponse({"error": "product not found"}, status_code=404)
+
+    barcodes = get_product_barcodes(product_id)
+    return JSONResponse({"product_id": product_id, "barcodes": barcodes})
+
+
+# ─────────────────────────────────────────────
+# POST /api/product/{product_id}/barcodes
+# ─────────────────────────────────────────────
+
+@router.post("/api/product/{product_id}/barcodes")
+def api_add_barcode(
+    product_id: int = Path(..., ge=1),
+    barcode: str = Body(..., embed=True),
+    label: Optional[str] = Body(None, embed=True),
+) -> JSONResponse:
+    """
+    Ajoute un code-barres EAN à un produit.
+
+    Corps JSON :
+        { "barcode": "3017620425036", "label": "Grand format" }
+
+    Réponse succès :
+        { "ok": true, "id": 42, "barcode": "3017620425036" }
+
+    Réponse si barcode déjà utilisé :
+        { "ok": false, "error": "barcode already exists" }
+    """
+    products = list_products() or []
+    if not any(int(p["id"]) == product_id for p in products):
+        return JSONResponse({"ok": False, "error": "product not found"}, status_code=404)
+
+    barcode_clean = "".join(ch for ch in (barcode or "") if ch.isdigit())
+    if not barcode_clean:
+        return JSONResponse({"ok": False, "error": "barcode invalide (chiffres uniquement)"}, status_code=400)
+
+    bc_id = add_product_barcode(product_id, barcode_clean, label or "")
+    if bc_id is None:
+        return JSONResponse({"ok": False, "error": "barcode already exists"}, status_code=409)
+
+    log_event("product.barcode.add", {"product_id": product_id, "barcode": barcode_clean, "label": label})
+    return JSONResponse({"ok": True, "id": bc_id, "barcode": barcode_clean})
+
+
+# ─────────────────────────────────────────────
+# DELETE /api/product/barcodes/{bc_id}
+# ─────────────────────────────────────────────
+
+@router.delete("/api/product/barcodes/{bc_id}")
+def api_delete_barcode(bc_id: int = Path(..., ge=1)) -> JSONResponse:
+    """
+    Supprime un code-barres par son id (obtenu via GET /api/product/{id}/barcodes).
+
+    Réponse succès :
+        { "ok": true }
+
+    Réponse si non trouvé :
+        { "ok": false, "error": "not found" }
+    """
+    deleted = delete_product_barcode(bc_id)
+    if not deleted:
+        return JSONResponse({"ok": False, "error": "not found"}, status_code=404)
+    log_event("product.barcode.delete", {"bc_id": bc_id})
+    return JSONResponse({"ok": True})
 
 
 # ─────────────────────────────────────────────

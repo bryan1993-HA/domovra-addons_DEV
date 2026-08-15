@@ -5,6 +5,22 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/).
 
 ---
 
+## [1.4.64-dev.16] - 2026-08-15
+
+### Added
+- **#10** : Plusieurs EAN par produit — nouvelle table `product_barcodes(id, product_id, barcode, label)` avec contrainte UNIQUE sur le code-barres
+- **#10** : Migration automatique au démarrage : les `products.barcode` existants sont copiés dans `product_barcodes`
+- **#10** : API REST — 3 nouveaux endpoints : `GET /api/product/{id}/barcodes`, `POST /api/product/{id}/barcodes`, `DELETE /api/product/barcodes/{bc_id}`
+- **#10** : UI — section EAN dans la modale "Modifier la fiche produit" : affichage des codes enregistrés avec suppression individuelle, champ d'ajout avec libellé optionnel
+- **#10** : `GET /api/product/by_barcode` cherche désormais dans `product_barcodes` (tous les EAN) puis fallback sur `products.barcode`
+- **#10** : Chaque achat avec EAN enregistre automatiquement le code dans `product_barcodes` (`INSERT OR IGNORE`)
+
+### Changed
+- `delete_product()` supprime aussi les lignes liées dans `product_barcodes` (cascade)
+- `add_product()` enregistre le barcode initial dans `product_barcodes` en plus de `products.barcode`
+
+---
+
 ## [1.4.64-dev.15] - 2026-08-15
 
 ### Added

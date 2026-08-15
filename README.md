@@ -6,7 +6,7 @@
 
 **Add-on Home Assistant** · Gérez votre frigo, congélateur et placards depuis votre tableau de bord HA.
 
-[![Version](https://img.shields.io/badge/version-1.4.64--dev.15-blue?style=for-the-badge)](https://github.com/bryan1993-HA/domovra-addons_DEV/blob/main/CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.4.64--dev.16-blue?style=for-the-badge)](https://github.com/bryan1993-HA/domovra-addons_DEV/blob/main/CHANGELOG.md)
 [![Stage](https://img.shields.io/badge/stage-experimental-orange?style=for-the-badge)](https://github.com/bryan1993-HA/domovra-addons_DEV)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-compatible-41BDF5?style=for-the-badge&logo=home-assistant)](https://www.home-assistant.io/)
 [![License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)](LICENSE)
@@ -534,6 +534,7 @@ Le détail de toutes les versions est disponible dans [CHANGELOG.md](../CHANGELO
 
 | Version | Date | Points clés |
 |---|---|---|
+| `1.4.64-dev.16` | 2026-08-15 | Multi-EAN par produit (table dédiée, UI, API, migration auto) |
 | `1.4.64-dev.15` | 2026-08-15 | API REST HA complète (5 endpoints), historique prix, shopping semi-auto |
 | `1.4.64-dev.14` | 2026-08-15 | Options HA, traductions, CHANGELOG, vue groupée stocks |
 | `1.4.64-dev.13` | 2026-08-15 | SQLite WAL, logs, dead code, versions pinées |
