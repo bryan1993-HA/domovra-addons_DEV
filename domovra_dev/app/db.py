@@ -1,8 +1,10 @@
-import os, sqlite3, datetime
+import os, sqlite3, datetime, logging
 DB_PATH = os.environ.get("DB_PATH", "/data/domovra.sqlite3")
 
+logger = logging.getLogger("domovra.db")
+
 def _conn():
-    c = sqlite3.connect(DB_PATH)
+    c = sqlite3.connect(DB_PATH, timeout=10)
     c.row_factory = sqlite3.Row
     return c
 
@@ -12,6 +14,10 @@ def _column_exists(c: sqlite3.Connection, table: str, column: str) -> bool:
 
 def init_db():
     with _conn() as c:
+        # ----- WAL mode + busy timeout (robustesse multi-accès)
+        c.execute("PRAGMA journal_mode=WAL")
+        c.execute("PRAGMA busy_timeout=10000")
+
         # ----- Tables de base
         c.execute("""CREATE TABLE IF NOT EXISTS locations(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -499,59 +505,6 @@ def add_lot(product_id: int, location_id: int, qty: float, frozen_on: str | None
         c.commit()
     return lot_id
 
-def add_lot_purchase(
-    product_id: int,
-    location_id: int,
-    qty_total: float,                 # quantité totale (qty * multiplier)
-    frozen_on: str | None,
-    best_before: str | None,
-    *,
-    article_name: str | None = None,  # ← “Nutella”
-    brand: str | None = None,
-    ean: str | None = None,
-    price_total: float | None = None,
-    qty_per_unit: float | None = None,
-    multiplier: int | None = None,
-    unit_at_purchase: str | None = None,
-) -> int:
-    """Insertion d’un lot depuis la page Achats, en enregistrant les méta-infos d’article."""
-    with _conn() as c:
-        today = _today()
-        cur = c.execute(
-            """
-            INSERT INTO stock_lots(
-              product_id, location_id, qty, frozen_on, best_before, created_on,
-              article_name, brand, ean, price_total, qty_per_unit, multiplier, unit_at_purchase,
-              initial_qty, status
-            )
-            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-            """,
-            (
-                int(product_id), int(location_id), float(qty_total),
-                frozen_on, best_before, today,
-                (article_name or None),
-                (brand or None),
-                (ean or None),
-                (float(price_total) if price_total not in (None, "",) else None),
-                (float(qty_per_unit) if qty_per_unit not in (None, "",) else None),
-                (int(multiplier) if multiplier not in (None, "",) else None),
-                (unit_at_purchase or None),
-                float(qty_total), 'open'
-            )
-        )
-        lot_id = cur.lastrowid
-
-        # Mouvement IN (comme add_lot)
-        c.execute(
-            """INSERT INTO movements(lot_id,type,qty,ts,note)
-               VALUES(?,?,?,?,?)""",
-            (lot_id, 'IN', float(qty_total), today, None)
-        )
-        c.commit()
-    return lot_id
-
-
-
 def list_lots():
     with _conn() as c:
         # 1) Essaie avec l.name (cas où tu stockes "Nutella" dans stock_lots.name)
@@ -596,7 +549,7 @@ def list_lots():
         try:
             return [dict(r) for r in c.execute(q1)]
         except Exception:
-            # 2) Fallback si la colonne l.name n’existe pas (ancien schéma)
+            # 2) Fallback si la colonne l.name n'existe pas (ancien schéma)
             q2 = """
             SELECT
                 l.id,
@@ -718,6 +671,7 @@ def consume_lot(lot_id: int, qty: float, reason: str | None = None):
     with _conn() as c:
         row = c.execute("SELECT qty, price_total, qty_per_unit, multiplier FROM stock_lots WHERE id=?", (lot_id,)).fetchone()
         if not row:
+            logger.warning("consume_lot: lot_id=%s introuvable", lot_id)
             return
         old_qty = float(row["qty"])
         qty = float(qty)
@@ -733,37 +687,45 @@ def consume_lot(lot_id: int, qty: float, reason: str | None = None):
         except Exception:
             price_alloc = None
 
-        if new_qty <= 0:
-            # Clôture du lot (soft delete)
-            c.execute(
-                "UPDATE stock_lots SET qty=0, status='empty', ended_on=DATE('now') WHERE id=?",
-                (lot_id,)
-            )
-            c.execute(
-                """INSERT INTO movements(lot_id,type,qty,ts,note,reason_code,price_allocated)
-                   VALUES(?,?,?,?,?,?,?)""",
-                (lot_id, 'OUT', old_qty, datetime.date.today().isoformat(),
-                 'lot terminé', reason, price_alloc)
-            )
-        else:
-            c.execute("UPDATE stock_lots SET qty=? WHERE id=?", (new_qty, lot_id))
-            c.execute(
-                """INSERT INTO movements(lot_id,type,qty,ts,note,reason_code,price_allocated)
-                   VALUES(?,?,?,?,?,?,?)""",
-                (lot_id, 'OUT', qty, datetime.date.today().isoformat(),
-                 None, reason, price_alloc)
-            )
-        c.commit()
+        try:
+            if new_qty <= 0:
+                # Clôture du lot (soft delete)
+                c.execute(
+                    "UPDATE stock_lots SET qty=0, status='empty', ended_on=DATE('now') WHERE id=?",
+                    (lot_id,)
+                )
+                c.execute(
+                    """INSERT INTO movements(lot_id,type,qty,ts,note,reason_code,price_allocated)
+                       VALUES(?,?,?,?,?,?,?)""",
+                    (lot_id, 'OUT', old_qty, datetime.date.today().isoformat(),
+                     'lot terminé', reason, price_alloc)
+                )
+                logger.info("consume_lot: lot_id=%s clôturé (qty consommée=%.3f)", lot_id, old_qty)
+            else:
+                c.execute("UPDATE stock_lots SET qty=? WHERE id=?", (new_qty, lot_id))
+                c.execute(
+                    """INSERT INTO movements(lot_id,type,qty,ts,note,reason_code,price_allocated)
+                       VALUES(?,?,?,?,?,?,?)""",
+                    (lot_id, 'OUT', qty, datetime.date.today().isoformat(),
+                     None, reason, price_alloc)
+                )
+                logger.info("consume_lot: lot_id=%s qty %.3f → %.3f", lot_id, old_qty, new_qty)
+            c.commit()
+        except Exception as e:
+            logger.error("consume_lot: erreur lot_id=%s: %s", lot_id, e)
+            raise
 
 def update_lot(lot_id: int, qty: float, location_id: int, frozen_on: str | None, best_before: str | None):
     with _conn() as c:
-        c.execute(
+        cur = c.execute(
             """UPDATE stock_lots
                SET qty=?, location_id=?, frozen_on=?, best_before=?
                WHERE id=?""",
             (float(qty), int(location_id), frozen_on, best_before, int(lot_id))
         )
         c.commit()
+        if cur.rowcount == 0:
+            logger.warning("update_lot: lot_id=%s introuvable ou aucune ligne modifiée", lot_id)
 
 def delete_lot(lot_id: int) -> int:
     with _conn() as c:

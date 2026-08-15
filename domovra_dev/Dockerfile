@@ -16,14 +16,16 @@ COPY app ${APP_HOME}/
 # ⬅️ Ajoute le manifest de l'add-on dans l'image
 COPY config.json ${APP_HOME}/config.json
 
-# Dépendances (inclut python-multipart)
+# Dépendances (versions pinées pour builds reproductibles)
 RUN python3 -m venv ${VENV_PATH} \
  && ${VENV_PATH}/bin/pip install --no-cache-dir \
-    fastapi "uvicorn[standard]" jinja2 python-multipart
+    "fastapi>=0.110.0,<1.0.0" \
+    "uvicorn[standard]>=0.27.0,<1.0.0" \
+    "jinja2>=3.1.0,<4.0.0" \
+    "python-multipart>=0.0.9,<1.0.0"
 
 COPY run.sh /run.sh
 RUN chmod +x /run.sh
 
-# (optionnel) garder 8099 ou aligne avec run.sh (8098). Ça n'impacte pas Ingress.
 EXPOSE 8098
 CMD ["/run.sh"]
