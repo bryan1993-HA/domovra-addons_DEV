@@ -49,11 +49,11 @@
         Trouvable dans HA → Paramètres → Appareils &amp; Services → Bluetooth → Annonces
       </div>
     </div>
-    <div class="field" style="display:flex;align-items:flex-end;gap:8px">
-      <button type="button" class="btn secondary" id="btn-print-test" onclick="printTest()">
+    <div class="field" style="display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap">
+      <button type="button" class="btn secondary" id="btn-print-test" onclick="printerAction('print')">
         🖨️ Imprimer une étiquette de test
       </button>
-      <button type="button" class="btn ghost" id="btn-preview-test" onclick="previewTest()">
+      <button type="button" class="btn ghost" id="btn-preview-test" onclick="printerAction('preview')">
         👁 Prévisualiser
       </button>
     </div>
@@ -70,7 +70,7 @@
 
 <script>
 (function () {
-  var BASE = window.__DOMOVRA_BASE__ || "/";
+  var BASE = window.__DOMOVRA_BASE__ || '/';
 
   function setStatus(msg, ok) {
     var el = document.getElementById('printer-status');
@@ -79,37 +79,65 @@
     el.style.color = ok ? 'var(--toast-ok, #4caf50)' : 'var(--toast-error, #ef5350)';
   }
 
-  window.printTest = async function () {
-    var btn = document.getElementById('btn-print-test');
-    if (btn) { btn.disabled = true; btn.textContent = '⏳ Envoi…'; }
-    setStatus('', true);
+  /* Parse la réponse en JSON si possible, sinon retourne le texte brut */
+  async function safeJson(response) {
+    var text = await response.text();
     try {
-      var r = await fetch(BASE + 'api/print/test', { method: 'POST' });
-      var d = await r.json();
-      setStatus(d.message || (d.ok ? 'Impression lancée !' : 'Erreur'), d.ok);
-      window.showToast && window.showToast(d.message || 'Impression lancée', d.ok ? 'ok' : 'error');
+      return { parsed: JSON.parse(text), raw: text };
+    } catch (_) {
+      return { parsed: null, raw: text };
+    }
+  }
+
+  window.printerAction = async function (action) {
+    var btnPrint   = document.getElementById('btn-print-test');
+    var btnPreview = document.getElementById('btn-preview-test');
+
+    if (action === 'print') {
+      if (btnPrint) { btnPrint.disabled = true; btnPrint.textContent = '⏳ Envoi…'; }
+    } else {
+      if (btnPreview) { btnPreview.disabled = true; btnPreview.textContent = '⏳ Génération…'; }
+    }
+    setStatus('', true);
+
+    try {
+      if (action === 'preview') {
+        /* Prévisualisation : attend une image PNG */
+        var r = await fetch(BASE + 'api/print/preview/test');
+        if (!r.ok) {
+          var err = await safeJson(r);
+          var msg = (err.parsed && (err.parsed.message || err.parsed.error)) || err.raw || ('Erreur ' + r.status);
+          setStatus('Erreur : ' + msg, false);
+          window.showToast && window.showToast('Erreur prévisualisation', 'error');
+          return;
+        }
+        var blob = await r.blob();
+        var img = document.getElementById('preview-img');
+        var container = document.getElementById('preview-container');
+        img.src = URL.createObjectURL(blob);
+        container.hidden = false;
+        setStatus('Aperçu généré.', true);
+
+      } else {
+        /* Impression : attend un JSON */
+        var r = await fetch(BASE + 'api/print/test', { method: 'POST' });
+        var result = await safeJson(r);
+        if (result.parsed) {
+          var d = result.parsed;
+          setStatus(d.message || (d.ok ? 'Impression lancée !' : 'Erreur'), !!d.ok);
+          window.showToast && window.showToast(d.message || (d.ok ? 'Impression lancée !' : 'Erreur'), d.ok ? 'ok' : 'error');
+        } else {
+          /* Réponse non-JSON (erreur serveur HTML, dépendance manquante…) */
+          setStatus('Erreur serveur — vérifiez les logs de l\'add-on. Réponse : ' + result.raw.slice(0, 120), false);
+          window.showToast && window.showToast('Erreur serveur', 'error');
+        }
+      }
     } catch (e) {
       setStatus('Erreur réseau : ' + e.message, false);
       window.showToast && window.showToast('Erreur réseau', 'error');
     } finally {
-      if (btn) { btn.disabled = false; btn.textContent = '🖨️ Imprimer une étiquette de test'; }
-    }
-  };
-
-  window.previewTest = async function () {
-    var container = document.getElementById('preview-container');
-    var img = document.getElementById('preview-img');
-    if (!container || !img) return;
-    setStatus('Génération de l\'aperçu…', true);
-    try {
-      var r = await fetch(BASE + 'api/print/preview/test');
-      if (!r.ok) throw new Error('Erreur ' + r.status);
-      var blob = await r.blob();
-      img.src = URL.createObjectURL(blob);
-      container.hidden = false;
-      setStatus('', true);
-    } catch (e) {
-      setStatus('Impossible de générer l\'aperçu : ' + e.message, false);
+      if (btnPrint)   { btnPrint.disabled   = false; btnPrint.textContent   = '🖨️ Imprimer une étiquette de test'; }
+      if (btnPreview) { btnPreview.disabled = false; btnPreview.textContent = '👁 Prévisualiser'; }
     }
   };
 })();
