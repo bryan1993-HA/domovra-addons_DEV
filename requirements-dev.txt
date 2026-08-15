@@ -1,4 +1,15 @@
 # Dépendances de développement uniquement (tests)
-# Installer avec : pip install -r requirements-dev.txt
+#
+# Sur un système avec pip :
+#   pip install -r requirements-dev.txt && pytest
+#
+# Sur TrueNAS (pas de pip) — utiliser Docker :
+#   docker run --rm \
+#     -v /mnt/stockage/Web/HA-Services/Domovra/DEV:/app \
+#     -w /app \
+#     python:3.11-alpine \
+#     sh -c "pip install pytest jinja2 -q && pytest"
+
 pytest>=8.0.0,<9.0.0
 pytest-asyncio>=0.23.0,<1.0.0
+jinja2>=3.1.0,<4.0.0
