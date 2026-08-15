@@ -3,6 +3,8 @@ import json
 import os
 import tempfile
 import shutil
+import threading
+import time
 import logging
 from typing import Any, Dict
 
@@ -10,6 +12,13 @@ LOGGER = logging.getLogger("domovra.settings_store")
 
 DATA_DIR = "/data"
 SETTINGS_PATH = os.path.join(DATA_DIR, "settings.json")
+
+# Cache en mémoire : évite de relire le fichier à chaque render
+# Durée de vie : 10 secondes. Invalidé immédiatement après un save.
+_cache_lock = threading.Lock()
+_cache_data: Dict[str, Any] | None = None
+_cache_ts: float = 0.0
+_CACHE_TTL = 10.0  # secondes
 
 DEFAULTS: Dict[str, Any] = {
     "theme": "auto",                 # auto | light | dark
@@ -49,32 +58,23 @@ def _is_hex_color(s: str) -> bool:
     return len(h) in (3, 6) and all(c in "0123456789abcdefABCDEF" for c in h)
 
 def _only_known_keys(raw: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Ne conserve que les clés connues de DEFAULTS.
-    (Évite de réécrire des clés obsolètes.)
-    """
+    """Ne conserve que les clés connues de DEFAULTS."""
     return {k: raw.get(k, DEFAULTS[k]) for k in DEFAULTS.keys()}
 
 def _coerce_types(raw: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Fusionne avec DEFAULTS et applique des validations/coercitions.
-    """
-    # Ne garder que les clés officielles avant fusion
+    """Fusionne avec DEFAULTS et applique des validations/coercitions."""
     clean_in = _only_known_keys(raw or {})
     out = DEFAULTS.copy()
     out.update(clean_in)
 
-    # Validations
     if out["theme"] not in ("auto", "light", "dark"):
         out["theme"] = "auto"
 
-    # Booleans
     for k in ("sidebar_compact", "enable_scanner", "enable_off_block",
               "ha_notifications", "log_consumption", "log_add_remove",
               "ask_move_on_delete"):
         out[k] = bool(out.get(k, DEFAULTS[k]))
 
-    # Entiers >= 0
     def _int_ge0(v, dflt):
         try:
             return max(0, int(v))
@@ -95,16 +95,22 @@ def _coerce_types(raw: Dict[str, Any]) -> Dict[str, Any]:
         DEFAULTS["log_retention_days"],
     )
 
-    # Garde-fou logique : rouge ≤ jaune
+    # Garde-fou logique : rouge <= jaune
     if out["retention_days_critical"] > out["retention_days_warning"]:
         out["retention_days_critical"] = out["retention_days_warning"]
 
-    # Couleurs toasts
     for k in ("toast_ok", "toast_warn", "toast_error"):
         v = str(out.get(k, DEFAULTS[k])).strip()
         out[k] = v if _is_hex_color(v) else DEFAULTS[k]
 
     return out
+
+
+def _invalidate_cache() -> None:
+    global _cache_data, _cache_ts
+    with _cache_lock:
+        _cache_data = None
+        _cache_ts = 0.0
 
 
 def ensure_data_dir() -> None:
@@ -120,17 +126,28 @@ def _atomic_write_json(path: str, payload: Dict[str, Any]) -> None:
     shutil.move(tmp_path, path)
 
 def load_settings() -> Dict[str, Any]:
+    global _cache_data, _cache_ts
+
+    # Lecture depuis le cache si encore frais
+    now = time.monotonic()
+    with _cache_lock:
+        if _cache_data is not None and (now - _cache_ts) < _CACHE_TTL:
+            return _cache_data.copy()
+
     ensure_data_dir()
     if not os.path.exists(SETTINGS_PATH):
         LOGGER.info("settings.json introuvable, création avec valeurs par défaut")
         save_settings(DEFAULTS)
-        return DEFAULTS.copy()
+        result = DEFAULTS.copy()
+        with _cache_lock:
+            _cache_data = result.copy()
+            _cache_ts = time.monotonic()
+        return result
 
     try:
         with open(SETTINGS_PATH, "r", encoding="utf-8") as f:
             raw = json.load(f)
 
-        # Détecte les clés inconnues (legacy) et les nouvelles clés manquantes
         unknown = set(raw.keys()) - set(DEFAULTS.keys())
         missing = set(DEFAULTS.keys()) - set(raw.keys())
         if unknown or missing:
@@ -140,29 +157,30 @@ def load_settings() -> Dict[str, Any]:
                 LOGGER.info("Ajout des nouvelles clés dans settings.json: %s", sorted(missing))
             cleaned = _coerce_types(raw)
             _atomic_write_json(SETTINGS_PATH, cleaned)
-            return cleaned
+            result = cleaned
+        else:
+            result = _coerce_types(raw)
 
-        data = _coerce_types(raw)
-        LOGGER.debug("Chargement settings: %s", data)
-        return data
+        LOGGER.debug("Chargement settings: %s", result)
+        with _cache_lock:
+            _cache_data = result.copy()
+            _cache_ts = time.monotonic()
+        return result
 
     except Exception as e:
         LOGGER.exception("Erreur de lecture settings.json: %s", e)
-        # On ne casse pas l'UI : retourne defaults
         return DEFAULTS.copy()
 
 def save_settings(payload: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Enregistre uniquement les clés officielles, avec coercition/validation.
-    Les clés non supportées sont ignorées silencieusement.
-    """
+    """Enregistre uniquement les clés officielles, avec coercition/validation."""
     ensure_data_dir()
     try:
-        # Filtre d'abord le payload pour ne garder que les clés connues
         filtered = _only_known_keys(payload or {})
         data = _coerce_types(filtered)
         _atomic_write_json(SETTINGS_PATH, data)
         LOGGER.info("Paramètres enregistrés: %s", data)
+        # Invalide le cache immédiatement
+        _invalidate_cache()
         return data
     except Exception as e:
         LOGGER.exception("Erreur d'écriture settings.json: %s", e)

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import csv
 import io
+import re
 import sqlite3
 from typing import Any, List
 
@@ -16,19 +17,37 @@ from utils.http import ingress_base, render as render_with_env
 
 router = APIRouter()
 
+# Regex : noms de table/colonne SQLite valides (lettres, chiffres, _)
+_SAFE_IDENT = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
+
+# Préfixes dangereux pour l'injection de formules CSV
+_FORMULA_PREFIXES = ('=', '+', '-', '@', '\t', '\r')
+
 
 def _conn() -> sqlite3.Connection:
-    c = sqlite3.connect(DB_PATH)
+    c = sqlite3.connect(DB_PATH, timeout=10)
     c.row_factory = sqlite3.Row
+    c.execute("PRAGMA journal_mode=WAL")
     return c
 
 
-def _require_ingress(request: Request) -> None:
-    """Bloque l'accès si la requête ne passe pas par HA Ingress.
+def _validate_ident(name: str, label: str = "identifiant") -> str:
+    """Lève une HTTPException 400 si le nom n'est pas un identifiant SQLite valide."""
+    if not name or not _SAFE_IDENT.match(name):
+        raise HTTPException(status_code=400, detail=f"{label} invalide : '{name}'")
+    return name
 
-    HA Ingress injecte le header X-Ingress-Path sur chaque requête proxifiée.
-    Sans ce header (accès direct port 8098), les routes admin sont refusées.
-    """
+
+def _sanitize_csv_cell(value: Any) -> str:
+    """Préfixe les valeurs dangereuses (formules CSV) avec une apostrophe."""
+    s = "" if value is None else str(value)
+    if s.startswith(_FORMULA_PREFIXES):
+        return "'" + s
+    return s
+
+
+def _require_ingress(request: Request) -> None:
+    """Bloque l'accès si la requête ne passe pas par HA Ingress."""
     if not request.headers.get("x-ingress-path"):
         raise HTTPException(
             status_code=403,
@@ -65,8 +84,10 @@ async def admin_db_table(
     order_by: str | None = Query(None),
     desc: bool = Query(True),
 ):
+    _validate_ident(table, "Nom de table")
+
     with _conn() as c:
-        # existence
+        # Vérifie l'existence dans sqlite_master (paramétrisé)
         exists = c.execute(
             "SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name=?",
             (table,),
@@ -74,15 +95,17 @@ async def admin_db_table(
         if not exists:
             raise HTTPException(status_code=404, detail=f"Table '{table}' introuvable")
 
-        # colonnes
+        # Colonnes — table déjà validée par _validate_ident
         cols_rows = c.execute(f"PRAGMA table_info({table})").fetchall()
         columns = [r["name"] for r in cols_rows]
 
-        # tri (fallback sur rowid)
-        order = order_by if (order_by in columns) else None
+        # Tri (fallback sur rowid) — valide que order_by est une colonne réelle
+        order = order_by if (order_by and order_by in columns) else None
+        if order:
+            _validate_ident(order, "Colonne de tri")
         order_sql = f" ORDER BY {order} {'DESC' if desc else 'ASC'}" if order else " ORDER BY rowid DESC"
 
-        # pagination
+        # Pagination
         total = c.execute(f"SELECT COUNT(*) AS n FROM {table}").fetchone()["n"]
         offset = (page - 1) * page_size
 
@@ -115,6 +138,8 @@ async def admin_db_export_csv(
     order_by: str | None = Query(None),
     desc: bool = Query(True),
 ):
+    _validate_ident(table, "Nom de table")
+
     with _conn() as c:
         exists = c.execute(
             "SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name=?",
@@ -126,16 +151,18 @@ async def admin_db_export_csv(
         cols_rows = c.execute(f"PRAGMA table_info({table})").fetchall()
         columns = [r["name"] for r in cols_rows]
 
-        order = order_by if (order_by in columns) else None
+        order = order_by if (order_by and order_by in columns) else None
+        if order:
+            _validate_ident(order, "Colonne de tri")
         order_sql = f" ORDER BY {order} {'DESC' if desc else 'ASC'}" if order else " ORDER BY rowid DESC"
 
         rows = c.execute(f"SELECT * FROM {table}{order_sql}").fetchall()
 
     buf = io.StringIO()
-    writer = csv.DictWriter(buf, fieldnames=columns)
-    writer.writeheader()
+    writer = csv.writer(buf)
+    writer.writerow(columns)
     for r in rows:
-        writer.writerow(dict(r))
+        writer.writerow([_sanitize_csv_cell(r[col]) for col in columns])
     buf.seek(0)
 
     return StreamingResponse(

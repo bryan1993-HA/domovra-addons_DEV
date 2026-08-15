@@ -51,6 +51,14 @@ SENSORS = [
     },
 ]
 
+# Verrou + flag pour éviter l'empilement de threads si de nombreux appels
+# arrivent en rafale (ex: import CSV avec 100 lots).
+# Si un push est déjà en cours, le prochain appel pose un flag "pending"
+# et le thread en cours relancera un push à la fin.
+_push_lock = threading.Lock()
+_push_running = False
+_push_pending = False
+
 
 def _get_token() -> str | None:
     return os.environ.get("SUPERVISOR_TOKEN") or None
@@ -109,7 +117,32 @@ def refresh_and_push() -> None:
         logger.error("HA refresh_and_push error: %s", e)
 
 
+def _push_worker() -> None:
+    """Thread worker : exécute un push, puis en relance un si un appel est arrivé pendant l'exécution."""
+    global _push_running, _push_pending
+    while True:
+        refresh_and_push()
+        with _push_lock:
+            if _push_pending:
+                # Un nouvel appel est arrivé pendant le push : on en fait un autre
+                _push_pending = False
+                # _push_running reste True, on reboucle
+            else:
+                # Aucun appel en attente : on s'arrête
+                _push_running = False
+                break
+
+
 def schedule_ha_push() -> None:
-    """Fire-and-forget: push HA sensors in a background daemon thread."""
-    t = threading.Thread(target=refresh_and_push, daemon=True)
+    """Fire-and-forget avec debounce : au plus 1 thread actif + 1 push en attente."""
+    global _push_running, _push_pending
+    with _push_lock:
+        if _push_running:
+            # Un push est déjà en cours — on signale qu'un nouveau est demandé
+            _push_pending = True
+            return
+        _push_running = True
+        _push_pending = False
+
+    t = threading.Thread(target=_push_worker, daemon=True)
     t.start()

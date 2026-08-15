@@ -23,7 +23,6 @@ def lots_page(
 ):
     base = ingress_base(request)
 
-    # ← récupère les seuils depuis /data/settings.json (fallback env/valeurs sûres)
     WARNING_DAYS, CRITICAL_DAYS = get_retention_thresholds()
 
     items = list_lots()
@@ -57,13 +56,18 @@ def lot_add_action(request: Request,
                    qty: float = Form(...),
                    frozen_on: str = Form(""),
                    best_before: str = Form("")):
-    add_lot(product_id, location_id, float(qty), frozen_on or None, best_before or None)
+    base = ingress_base(request)
+    q = float(qty)
+    if q <= 0:
+        return RedirectResponse(base + "lots?error=qty_invalid",
+                                status_code=303, headers={"Cache-Control": "no-store"})
+    add_lot(product_id, location_id, q, frozen_on or None, best_before or None)
     log_event("lot.add", {
-        "product_id": product_id, "location_id": location_id, "qty": float(qty),
+        "product_id": product_id, "location_id": location_id, "qty": q,
         "frozen_on": frozen_on or None, "best_before": best_before or None
     })
     schedule_ha_push()
-    return RedirectResponse(ingress_base(request) + "lots?added=1",
+    return RedirectResponse(base + "lots?added=1",
                             status_code=303, headers={"Cache-Control": "no-store"})
 
 
@@ -74,34 +78,42 @@ def lot_update_action(request: Request,
                       location_id: int = Form(...),
                       frozen_on: str = Form(""),
                       best_before: str = Form("")):
+    base = ingress_base(request)
     try:
         q = float(qty)
     except Exception:
         q = 0.0
+    if q < 0:
+        return RedirectResponse(base + "lots?error=qty_invalid",
+                                status_code=303, headers={"Cache-Control": "no-store"})
     update_lot(lot_id, q, int(location_id), frozen_on or None, best_before or None)
     log_event("lot.update", {
         "lot_id": lot_id, "qty": q, "location_id": int(location_id),
         "frozen_on": frozen_on or None, "best_before": best_before or None
     })
     schedule_ha_push()
-    return RedirectResponse(ingress_base(request) + "lots?updated=1",
+    return RedirectResponse(base + "lots?updated=1",
                             status_code=303, headers={"Cache-Control": "no-store"})
 
 
 @router.post("/lot/consume")
 def lot_consume_action(request: Request, lot_id: int = Form(...), qty: float = Form(...)):
+    base = ingress_base(request)
     q = float(qty)
+    if q <= 0:
+        return RedirectResponse(base + "lots?error=qty_invalid",
+                                status_code=303, headers={"Cache-Control": "no-store"})
     consume_lot(lot_id, q)
     log_event("lot.consume", {"lot_id": lot_id, "qty": q})
     schedule_ha_push()
-    return RedirectResponse(ingress_base(request) + "lots",
-                            status_code=303, headers={"Cache-Control":"no-store"})
+    return RedirectResponse(base + "lots",
+                            status_code=303, headers={"Cache-Control": "no-store"})
 
 
 @router.post("/lot/delete")
 def lot_delete_action(request: Request, lot_id: int = Form(...)):
     try:
-        affected = delete_lot(int(lot_id))  # doit retourner rowcount (0 ou 1)
+        affected = delete_lot(int(lot_id))  # retourne rowcount (0 ou 1)
     except Exception as e:
         return JSONResponse({"error": "delete_failed", "lot_id": lot_id, "detail": str(e)}, status_code=500)
 
@@ -127,17 +139,13 @@ def debug_lots(
     location: str = Query("", alias="location"),
     status: str = Query("", alias="status"),
 ):
-    # Seuils dynamiques
     WARNING_DAYS, CRITICAL_DAYS = get_retention_thresholds()
 
-    # 1) Données brutes
     items = list_lots()
 
-    # 2) Ajoute le statut (comme dans la page)
     for it in items:
         it["status"] = status_for(it.get("best_before"), WARNING_DAYS, CRITICAL_DAYS)
 
-    # 3) Filtres identiques à /lots
     if product:
         needle = product.casefold()
         items = [i for i in items if needle in (i.get("product", "").casefold())]
@@ -146,7 +154,6 @@ def debug_lots(
     if status:
         items = [i for i in items if i.get("status") == status]
 
-    # 4) Petits récap utiles
     counts = {"total": len(items), "by_status": {"green": 0, "yellow": 0, "red": 0}}
     for it in items:
         s = it.get("status") or "green"
@@ -154,14 +161,13 @@ def debug_lots(
             counts["by_status"][s] = 0
         counts["by_status"][s] += 1
 
-    # 5) Options de filtres (pour savoir ce qui est possible)
     locations = list_locations()
     products = list_products()
 
     return JSONResponse({
         "filters_applied": {"product": product, "location": location, "status": status},
         "counts": counts,
-        "items": items,                 # -> la liste des lots telle que vue par le template
+        "items": items,
         "filter_options": {
             "locations": [{"id": l["id"], "name": l["name"]} for l in locations],
             "products": [{"id": p["id"], "name": p["name"]} for p in products],
