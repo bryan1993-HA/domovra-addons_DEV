@@ -5,9 +5,13 @@ Couvre get_retention_thresholds() avec les 3 sources de configuration :
   1. /data/options.json (Supervisor HA) — priorité maximale
   2. settings_store (réglages in-app)
   3. Valeurs par défaut codées en dur (30 / 14)
+
+Note : config.py fait `from settings_store import load_settings` au niveau module,
+ce qui crée une référence locale `config.load_settings`. Le mock doit donc cibler
+`config.load_settings` (et non `settings_store.load_settings`) pour que la closure
+dans get_retention_thresholds() utilise le stub.
 """
 import json
-import importlib
 import pytest
 import config
 
@@ -16,39 +20,32 @@ class TestRetentionThresholds:
 
     def test_defaults_without_options_file(self, monkeypatch):
         """Sans fichier options.json et sans settings, les défauts s'appliquent."""
-        # _options_json_thresholds retourne None si le fichier est absent
         monkeypatch.setattr(config, "_options_json_thresholds", lambda: None)
-        # load_settings retourne des valeurs par défaut
         monkeypatch.setattr(
-            "settings_store.load_settings",
+            config, "load_settings",
             lambda: {"retention_days_warning": 30, "retention_days_critical": 14},
-            raising=False,
         )
         w, c = config.get_retention_thresholds()
         assert w == 30
         assert c == 14
 
-    def test_options_json_overrides_settings(self, monkeypatch, tmp_path):
+    def test_options_json_overrides_settings(self, monkeypatch):
         """Les valeurs de /data/options.json ont la priorité sur les settings in-app."""
         monkeypatch.setattr(config, "_options_json_thresholds", lambda: (45, 20))
-        # Même si settings retourne autre chose, options.json prime
         monkeypatch.setattr(
-            "settings_store.load_settings",
+            config, "load_settings",
             lambda: {"retention_days_warning": 30, "retention_days_critical": 14},
-            raising=False,
         )
         w, c = config.get_retention_thresholds()
         assert w == 45
         assert c == 20
 
     def test_options_json_partial_is_ignored(self, monkeypatch):
-        """Si options.json ne fournit pas les deux valeurs > 0, on ignore et on fallback."""
-        # Simule un options.json avec seulement un champ valide
+        """Si options.json ne fournit pas deux valeurs > 0, on fallback sur settings."""
         monkeypatch.setattr(config, "_options_json_thresholds", lambda: None)
         monkeypatch.setattr(
-            "settings_store.load_settings",
+            config, "load_settings",
             lambda: {"retention_days_warning": 25, "retention_days_critical": 10},
-            raising=False,
         )
         w, c = config.get_retention_thresholds()
         assert w == 25
@@ -61,7 +58,7 @@ class TestRetentionThresholds:
             "retention_days_warning": 60,
             "retention_days_critical": 30,
         }))
-        # Patch la fonction pour qu'elle lise notre fichier temporaire
+
         def _read_options():
             try:
                 with open(str(opts_file)) as f:
@@ -73,6 +70,7 @@ class TestRetentionThresholds:
             except Exception:
                 pass
             return None
+
         monkeypatch.setattr(config, "_options_json_thresholds", _read_options)
         w, c = config.get_retention_thresholds()
         assert w == 60
@@ -82,9 +80,8 @@ class TestRetentionThresholds:
         """Des valeurs à 0 dans options.json ne doivent pas écraser les défauts."""
         monkeypatch.setattr(config, "_options_json_thresholds", lambda: None)
         monkeypatch.setattr(
-            "settings_store.load_settings",
+            config, "load_settings",
             lambda: {"retention_days_warning": 30, "retention_days_critical": 14},
-            raising=False,
         )
         w, c = config.get_retention_thresholds()
         assert w > 0
@@ -94,9 +91,8 @@ class TestRetentionThresholds:
         """Les réglages in-app personnalisés sont bien pris en compte."""
         monkeypatch.setattr(config, "_options_json_thresholds", lambda: None)
         monkeypatch.setattr(
-            "settings_store.load_settings",
+            config, "load_settings",
             lambda: {"retention_days_warning": 45, "retention_days_critical": 7},
-            raising=False,
         )
         w, c = config.get_retention_thresholds()
         assert w == 45
