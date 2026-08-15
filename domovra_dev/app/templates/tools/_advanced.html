@@ -1,116 +1,115 @@
 <h2>Avancés</h2>
 
-<div class=”row”>
-  <div class=”field”>
-    <label style=”display:flex;align-items:center;gap:.5rem”>
-      <input type=”checkbox” name=”enable_off_block” {{ “checked” if SETTINGS.enable_off_block|default(true) }}>
-      Afficher le bloc Open Food Facts sur “Fiche produit”
+<div class="row">
+  <div class="field">
+    <label style="display:flex;align-items:center;gap:.5rem">
+      <input type="checkbox" name="enable_off_block" {{ 'checked' if SETTINGS.enable_off_block|default(true) }}>
+      Afficher le bloc Open Food Facts sur "Fiche produit"
     </label>
   </div>
-  <div class=”field”>
-    <label style=”display:flex;align-items:center;gap:.5rem”>
-      <input type=”checkbox” name=”enable_scanner” {{ “checked” if SETTINGS.enable_scanner|default(true) }}>
+  <div class="field">
+    <label style="display:flex;align-items:center;gap:.5rem">
+      <input type="checkbox" name="enable_scanner" {{ 'checked' if SETTINGS.enable_scanner|default(true) }}>
       Activer le scanner caméra (BarcodeDetector/ZXing)
     </label>
   </div>
-  <div class=”field”>
-    <label style=”display:flex;align-items:center;gap:.5rem”>
-      <input type=”checkbox” name=”ha_notifications” {{ “checked” if SETTINGS.ha_notifications }}>
+  <div class="field">
+    <label style="display:flex;align-items:center;gap:.5rem">
+      <input type="checkbox" name="ha_notifications" {{ 'checked' if SETTINGS.ha_notifications }}>
       Activer les notifications Home Assistant
     </label>
   </div>
 </div>
 
-<hr style=”border:none;border-top:1px solid var(--line);margin:18px 0 14px”>
+<hr style="border:none;border-top:1px solid var(--line);margin:18px 0 14px">
 
-<h3 style=”margin:0 0 12px;font-size:1rem”>🖨️ Imprimante d'étiquettes BLE</h3>
+<h3 style="margin:0 0 12px;font-size:1rem">🖨️ Imprimante d'étiquettes BLE</h3>
 
-<div class=”row”>
-  <div class=”field”>
-    <label style=”display:flex;align-items:center;gap:.5rem”>
-      <input type=”checkbox” name=”printer_enabled” id=”printer_enabled”
-             {{ “checked” if SETTINGS.printer_enabled }}
-             onchange=”document.getElementById('printer-config').hidden = !this.checked”>
+<div class="row">
+  <div class="field">
+    <label style="display:flex;align-items:center;gap:.5rem">
+      <input type="checkbox" name="printer_enabled" id="printer_enabled"
+             {{ 'checked' if SETTINGS.printer_enabled }}
+             onchange="document.getElementById('printer-config').hidden = !this.checked">
       Activer l'impression d'étiquettes (Phomemo M110 ou compatible)
     </label>
   </div>
 </div>
 
-<div id=”printer-config” {{ “hidden” if not SETTINGS.printer_enabled }}>
-  <div class=”row” style=”margin-top:10px”>
-    <div class=”field”>
-      <div class=”label”>Adresse MAC Bluetooth de l'imprimante</div>
-      <input type=”text” name=”printer_mac”
-             value=”{{ SETTINGS.printer_mac|default('') }}”
-             placeholder=”ex : 7C:91:7B:E4:6B:49”
-             pattern=”^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$”
-             title=”Format : XX:XX:XX:XX:XX:XX”>
-      <div class=”label” style=”margin-top:4px;font-size:11px”>
+<div id="printer-config" {{ 'hidden' if not SETTINGS.printer_enabled }}>
+  <div class="row" style="margin-top:10px">
+    <div class="field">
+      <div class="label">Adresse MAC Bluetooth de l'imprimante</div>
+      <input type="text" name="printer_mac"
+             value="{{ SETTINGS.printer_mac|default('') }}"
+             placeholder="ex : 7C:91:7B:E4:6B:49"
+             pattern="^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$"
+             title="Format : XX:XX:XX:XX:XX:XX">
+      <div class="label" style="margin-top:4px;font-size:11px">
         Trouvable dans HA → Paramètres → Appareils &amp; Services → Bluetooth → Annonces
       </div>
     </div>
-    <div class=”field” style=”display:flex;align-items:flex-end;gap:8px”>
-      <button type=”button” class=”btn secondary” id=”btn-print-test” onclick=”printTest()”>
+    <div class="field" style="display:flex;align-items:flex-end;gap:8px">
+      <button type="button" class="btn secondary" id="btn-print-test" onclick="printTest()">
         🖨️ Imprimer une étiquette de test
       </button>
-      <button type=”button” class=”btn ghost” id=”btn-preview-test” onclick=”previewTest()”>
+      <button type="button" class="btn ghost" id="btn-preview-test" onclick="previewTest()">
         👁 Prévisualiser
       </button>
     </div>
   </div>
 
-  <!-- Prévisualisation image -->
-  <div id=”preview-container” hidden style=”margin-top:12px;text-align:center”>
-    <div class=”label” style=”margin-bottom:6px”>Aperçu de l'étiquette :</div>
-    <img id=”preview-img” src=”” alt=”Aperçu étiquette”
-         style=”max-width:384px;border:1px solid var(--line);border-radius:8px;background:#fff”>
+  <div id="preview-container" hidden style="margin-top:12px;text-align:center">
+    <div class="label" style="margin-bottom:6px">Aperçu de l'étiquette :</div>
+    <img id="preview-img" src="" alt="Aperçu étiquette"
+         style="max-width:384px;border:1px solid var(--line);border-radius:8px;background:#fff">
   </div>
 
-  <div id=”printer-status” style=”margin-top:8px;font-size:13px”></div>
+  <div id="printer-status" style="margin-top:8px;font-size:13px"></div>
 </div>
 
 <script>
 (function () {
-  const BASE = window.__DOMOVRA_BASE__ || “/”;
+  var BASE = window.__DOMOVRA_BASE__ || "/";
 
   function setStatus(msg, ok) {
-    const el = document.getElementById(“printer-status”);
+    var el = document.getElementById('printer-status');
     if (!el) return;
     el.textContent = msg;
-    el.style.color = ok ? “var(--toast-ok, #4caf50)” : “var(--toast-error, #ef5350)”;
+    el.style.color = ok ? 'var(--toast-ok, #4caf50)' : 'var(--toast-error, #ef5350)';
   }
 
   window.printTest = async function () {
-    const btn = document.getElementById(“btn-print-test”);
-    if (btn) { btn.disabled = true; btn.textContent = “⏳ Envoi…”; }
-    setStatus(“”, true);
+    var btn = document.getElementById('btn-print-test');
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Envoi…'; }
+    setStatus('', true);
     try {
-      const r = await fetch(BASE + “api/print/test”, { method: “POST” });
-      const d = await r.json();
-      setStatus(d.message || (d.ok ? “Impression lancée !” : “Erreur”), d.ok);
-      window.showToast?.(d.message || “Impression lancée”, d.ok ? “ok” : “error”);
+      var r = await fetch(BASE + 'api/print/test', { method: 'POST' });
+      var d = await r.json();
+      setStatus(d.message || (d.ok ? 'Impression lancée !' : 'Erreur'), d.ok);
+      window.showToast && window.showToast(d.message || 'Impression lancée', d.ok ? 'ok' : 'error');
     } catch (e) {
-      setStatus(“Erreur réseau : “ + e.message, false);
-      window.showToast?.(“Erreur réseau”, “error”);
+      setStatus('Erreur réseau : ' + e.message, false);
+      window.showToast && window.showToast('Erreur réseau', 'error');
     } finally {
-      if (btn) { btn.disabled = false; btn.textContent = “🖨️ Imprimer une étiquette de test”; }
+      if (btn) { btn.disabled = false; btn.textContent = '🖨️ Imprimer une étiquette de test'; }
     }
   };
 
   window.previewTest = async function () {
-    const container = document.getElementById(“preview-container”);
-    const img = document.getElementById(“preview-img”);
+    var container = document.getElementById('preview-container');
+    var img = document.getElementById('preview-img');
     if (!container || !img) return;
-    setStatus(“Génération de l'aperçu…”, true);
+    setStatus('Génération de l\'aperçu…', true);
     try {
-      const r = await fetch(BASE + “api/print/preview/test”);
-      if (!r.ok) throw new Error(“Erreur “ + r.status);
-      const blob = await r.blob();
+      var r = await fetch(BASE + 'api/print/preview/test');
+      if (!r.ok) throw new Error('Erreur ' + r.status);
+      var blob = await r.blob();
       img.src = URL.createObjectURL(blob);
       container.hidden = false;
-      setStatus(“”, true);
+      setStatus('', true);
     } catch (e) {
-      setStatus(“Impossible de générer l'aperçu : “ + e.message, false);
+      setStatus('Impossible de générer l\'aperçu : ' + e.message, false);
     }
   };
 })();
