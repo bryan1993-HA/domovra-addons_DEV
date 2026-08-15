@@ -1541,6 +1541,21 @@ html[data-theme="light"] .wrap table:has(#locations-body) tbody tr:hover {
     }
 }
 
+/* ---- Base dialog : applique le thème à TOUS les <dialog> natifs ---- */
+dialog {
+    background: var(--bg-card, #0f1420);
+    color: inherit;
+    border: 1px solid var(--line, #1f2937);
+    border-radius: 14px;
+    padding: 20px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, .4);
+}
+
+dialog::backdrop {
+    backdrop-filter: blur(3px);
+    background: rgba(0, 0, 0, .45);
+}
+
 /* Dialog (ajustements) */
 .wrap dialog input[type="radio"] {
     width: 16px;
