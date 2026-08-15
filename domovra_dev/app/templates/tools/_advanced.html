@@ -70,7 +70,7 @@
 
 <script>
 (function () {
-  var BASE = window.__DOMOVRA_BASE__ || '/';
+  var BASE = '{{ BASE }}';
 
   function setStatus(msg, ok) {
     var el = document.getElementById('printer-status');
