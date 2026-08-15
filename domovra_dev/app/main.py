@@ -39,6 +39,7 @@ from routes.admin_db import router as admin_db_router
 from routes.shopping import router as shopping_router
 from routes.ha import router as ha_router
 from routes.export_import import router as export_import_router
+from routes.print_route import router as print_router
 
 
 # DB (uniquement ce dont on a besoin ici)
@@ -52,7 +53,6 @@ from db import init_db
 def setup_logging() -> None:
     """Console + fichier /data/domovra.log (rotation)."""
     root = logging.getLogger()
-    # reset propres si relance à chaud
     for h in list(root.handlers):
         root.removeHandler(h)
 
@@ -72,7 +72,7 @@ def setup_logging() -> None:
         fh.setLevel(logging.INFO)
         fh.setFormatter(fmt)
         root.addHandler(fh)
-    except Exception as e:  # pragma: no cover (en add-on seulement)
+    except Exception as e:  # pragma: no cover
         logging.getLogger("domovra").warning("Impossible d'ouvrir /data/domovra.log: %s", e)
 
 
@@ -87,9 +87,7 @@ logger = logging.getLogger("domovra")
 app = FastAPI()
 templates = build_jinja_env()
 
-# Valeur par défaut (filet de sécurité si hashing échoue)
 templates.globals.setdefault("ASSET_CSS_PATH", "static/css/domovra.css")
-# Expose l'env Jinja dans l'app (utilisé par les routers)
 app.state.templates = templates
 
 
@@ -108,17 +106,13 @@ async def csrf_check(request: Request, call_next):
       aucun risque CSRF → on laisse passer.
     - Accès direct port 8098 : si le header Origin est présent et ne
       correspond pas au Host, la requête cross-site est rejetée (403).
-      Les navigateurs ne peuvent pas forger Origin sur des requêtes
-      cross-origin, ce qui bloque les attaques CSRF classiques.
     """
     if request.method not in ("POST", "PUT", "DELETE", "PATCH"):
         return await call_next(request)
 
-    # Via HA Ingress — HA authentifie, CSRF non applicable
     if request.headers.get("x-ingress-path"):
         return await call_next(request)
 
-    # Accès direct : vérifier Origin si présent
     origin = request.headers.get("origin")
     if origin:
         host = request.headers.get("host", "")
@@ -141,20 +135,17 @@ HERE = os.path.dirname(__file__)
 STATIC_DIR = os.path.join(HERE, "static")
 os.makedirs(os.path.join(STATIC_DIR, "css"), exist_ok=True)
 
-# /static sera résolu automatiquement derrière l'ingress
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
-# Calcule une version hashée de la CSS et l'injecte dans Jinja
 try:
-    css_rel = ensure_hashed_asset("static/css/domovra.css")  # -> static/css/domovra-<hash>.css
+    css_rel = ensure_hashed_asset("static/css/domovra.css")
     if not (isinstance(css_rel, str) and css_rel.startswith("static/")):
-        css_rel = "static/css/domovra.css"  # filet de sécurité
+        css_rel = "static/css/domovra.css"
     templates.globals["ASSET_CSS_PATH"] = css_rel
     logger.info("ASSET_CSS_PATH = %s", css_rel)
 except Exception as e:  # pragma: no cover
     logger.exception("Failed to compute ASSET_CSS_PATH: %s", e)
 
-# Logs utiles au boot (surtout en add-on)
 try:
     def _ls(p: str):
         try:
@@ -200,6 +191,7 @@ app.include_router(debug_router)
 app.include_router(admin_db_router)
 app.include_router(ha_router)
 app.include_router(export_import_router)
+app.include_router(print_router)
 
 
 # ============================================================
@@ -209,7 +201,6 @@ app.include_router(export_import_router)
 async def _ha_push_loop() -> None:
     """Push initial au démarrage, puis toutes les 5 minutes en boucle."""
     from services.ha_entities import refresh_and_push
-    # Push immédiat au démarrage (dans le contexte asyncio, pas de thread séparé)
     try:
         refresh_and_push()
     except Exception as e:
@@ -226,22 +217,18 @@ async def _ha_push_loop() -> None:
 async def _startup() -> None:
     logger.info("Domovra starting. DB_PATH=%s", DB_PATH)
 
-    # Seuils dynamiques (issus de /data/settings.json avec fallback env/valeurs sûres)
     warn, crit = get_retention_thresholds()
     logger.info("Retention thresholds: WARNING_DAYS=%s  CRITICAL_DAYS=%s", warn, crit)
 
-    # DB & events table
     init_db()
     _ensure_events_table()
 
-    # Settings (si présents, sinon fallback dans routes/settings)
     try:
-        from settings_store import load_settings  # lazy import
+        from settings_store import load_settings
         current = load_settings()
-        app.state.settings = current  # exposé pour les routes qui en ont besoin
+        app.state.settings = current
         logger.info("Settings au démarrage: %s", current)
     except Exception as e:  # pragma: no cover
         logger.exception("Erreur lecture settings au démarrage: %s", e)
 
-    # HA sensors : push initial + boucle périodique toutes les 5 min
     asyncio.create_task(_ha_push_loop())

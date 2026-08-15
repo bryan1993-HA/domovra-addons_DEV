@@ -8,7 +8,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     VENV_PATH=/opt/venv \
     PATH=/opt/venv/bin:$PATH
 
-RUN apk add --no-cache python3 py3-pip
+# Dépendances système pour BLE (bleak) + Pillow (étiquettes)
+RUN apk add --no-cache \
+    python3 py3-pip \
+    bluez bluez-libs \
+    dbus \
+    libffi \
+    zlib jpeg libpng freetype \
+    ttf-dejavu
 
 WORKDIR ${APP_HOME}
 # Code de l'app
@@ -16,13 +23,15 @@ COPY app ${APP_HOME}/
 # ⬅️ Ajoute le manifest de l'add-on dans l'image
 COPY config.json ${APP_HOME}/config.json
 
-# Dépendances (versions pinées pour builds reproductibles)
+# Dépendances Python (versions pinées pour builds reproductibles)
 RUN python3 -m venv ${VENV_PATH} \
  && ${VENV_PATH}/bin/pip install --no-cache-dir \
     "fastapi>=0.110.0,<1.0.0" \
     "uvicorn[standard]>=0.27.0,<1.0.0" \
     "jinja2>=3.1.0,<4.0.0" \
-    "python-multipart>=0.0.9,<1.0.0"
+    "python-multipart>=0.0.9,<1.0.0" \
+    "bleak>=0.21.0,<1.0.0" \
+    "Pillow>=10.0.0,<12.0.0"
 
 COPY run.sh /run.sh
 RUN chmod +x /run.sh

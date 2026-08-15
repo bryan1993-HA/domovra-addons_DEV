@@ -1,7 +1,7 @@
 {
   "name": "Domovra (DEV)",
   "slug": "domovra_dev",
-  "version": "1.4.64-dev.19",
+  "version": "1.4.64-dev.20",
   "stage": "experimental",
   "description": "Version de développement. À utiliser uniquement pour les tests.",
   "url": "https://github.com/bryan1993-HA/domovra-addons_DEV",
@@ -25,6 +25,7 @@
     "data:rw"
   ],
   "homeassistant_api": true,
+  "bluetooth": true,
   "options": {
     "retention_days_warning": 30,
     "retention_days_critical": 14

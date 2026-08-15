@@ -112,6 +112,9 @@
                     Modifier</button>
                   <button class="menu-item danger btn-delete" role="menuitem" data-id="{{ it.id }}"
                     data-product="{{ it.name or it.article_name or it.product }}">🗑️ Supprimer</button>
+                  {% if SETTINGS.printer_enabled and SETTINGS.printer_mac %}
+                  <button class="menu-item btn-print" role="menuitem" data-id="{{ it.id }}">🖨️ Imprimer étiquette</button>
+                  {% endif %}
                 </div>
               </div>
             </div>
@@ -284,6 +287,7 @@
 
 {% block scripts %}
 <script>
+  const BASE = window.__DOMOVRA_BASE__ || "{{ BASE }}";
   const $ = s => document.querySelector(s);
   const cardsWrap = document.getElementById('lot-cards');
   const groupWrap = document.getElementById('group-cards');
@@ -500,6 +504,25 @@
     // sécurité : ENTER ne soumet pas la modale delete par mégarde
     delDialog?.querySelector('form')?.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') e.preventDefault();
+    });
+
+    // ---- Impression étiquette ----
+    document.querySelectorAll('.btn-print[data-id]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const lotId = btn.dataset.id;
+        btn.disabled = true;
+        btn.textContent = "⏳ Impression…";
+        try {
+          const r = await fetch(BASE + "api/print/lot/" + lotId, { method: "POST" });
+          const d = await r.json();
+          window.showToast?.(d.message || (d.ok ? "Impression lancée !" : "Erreur"), d.ok ? "ok" : "error");
+        } catch (e) {
+          window.showToast?.("Erreur réseau : " + e.message, "error");
+        } finally {
+          btn.disabled = false;
+          btn.textContent = "🖨️ Imprimer étiquette";
+        }
+      });
     });
   })();
 

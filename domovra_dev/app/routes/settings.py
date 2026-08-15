@@ -32,7 +32,7 @@ except Exception:  # pragma: no cover
         "toast_warn": "#ffb300",
         "toast_error": "#ef5350",
         # Seuils DLC (UI)
-        "retention_days_warning": None,  # None ⇒ fallback env/valeur sûre
+        "retention_days_warning": None,
         "retention_days_critical": None,
         # Divers drapeaux existants
         "enable_off_block": True,
@@ -42,6 +42,9 @@ except Exception:  # pragma: no cover
         "log_consumption": True,
         "log_add_remove": True,
         "ask_move_on_delete": False,
+        # Imprimante
+        "printer_enabled": False,
+        "printer_mac": "",
     }
 
     def _env_int(name: str, default: int) -> int:
@@ -61,7 +64,6 @@ except Exception:  # pragma: no cover
             except Exception:
                 pass
 
-        # Compat add-on : si absent/None, on regarde les env vars
         if data.get("retention_days_warning") is None:
             data["retention_days_warning"] = _env_int("WARNING_DAYS", 30)
         if data.get("retention_days_critical") is None:
@@ -71,7 +73,6 @@ except Exception:  # pragma: no cover
 
     def save_settings(new_values: dict):
         data = load_settings()
-        # on ne persiste que les clés connues
         for k, v in new_values.items():
             if k in DEFAULTS:
                 data[k] = v
@@ -111,21 +112,14 @@ def _file_size(path: str) -> str:
     return f"{b:.1f} PB"
 
 def _read_addon_config() -> dict:
-    """
-    Recherche config.json à plusieurs emplacements possibles.
-    Dans un add-on Home Assistant, le fichier n'est pas toujours copié dans l'image.
-    On remonte donc l'arbo + on teste quelques chemins connus.
-    """
-    here = os.path.abspath(os.path.dirname(__file__))  # …/domovra/app/routes
+    here = os.path.abspath(os.path.dirname(__file__))
     candidates = []
 
-    # 1) Remonte jusqu'à 6 niveaux et teste "config.json" à chaque niveau
     cur = here
     for _ in range(6):
         candidates.append(os.path.join(cur, "config.json"))
         cur = os.path.dirname(cur)
 
-    # 2) Chemins habituels dans un conteneur
     candidates += [
         os.path.join(os.getcwd(), "config.json"),
         "/app/config.json",
@@ -138,13 +132,11 @@ def _read_addon_config() -> dict:
             if os.path.exists(p):
                 with open(p, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                    # Valide rapidement qu'on a bien un config d'add-on
                     if isinstance(data, dict) and ("slug" in data or "name" in data or "version" in data):
                         return data
         except Exception:
             pass
 
-    # Pas trouvé : on renvoie un dict vide, build_about() gèrera les fallbacks.
     return {}
 
 def _counts_summary(db_path: str) -> dict:
@@ -168,7 +160,6 @@ def _counts_summary(db_path: str) -> dict:
 def build_about(db_path: str, settings_path: str) -> dict:
     cfg = _read_addon_config()
 
-    # Fallback version depuis variables d'env si config.json absent
     env_version = os.environ.get("DOMOVRA_VERSION") or os.environ.get("ADDON_VERSION")
 
     slug = str(cfg.get("slug", "domovra") or "domovra").lower()
@@ -178,12 +169,10 @@ def build_about(db_path: str, settings_path: str) -> dict:
     if "dev" in slug or "test" in slug:
         channel = "DEV"
 
-    # --- NEW: URLs projet / changelog
     repo_url = (cfg.get("url") or "").strip()
     changelog = (cfg.get("changelog") or "").strip()
     if not changelog and "github.com" in repo_url:
         base = repo_url[:-1] if repo_url.endswith("/") else repo_url
-        # priorité aux releases ; change en /blob/main/CHANGELOG.md si tu préfères
         changelog = base + "/releases"
 
     log_path = "/data/domovra.log"
@@ -197,7 +186,7 @@ def build_about(db_path: str, settings_path: str) -> dict:
             "url": repo_url or None,
             "documentation": cfg.get("documentation"),
             "issue_tracker": cfg.get("issue_tracker"),
-            "changelog": changelog or None,  # <- corrigé
+            "changelog": changelog or None,
             "description": cfg.get("description"),
         },
         "sys": {
@@ -216,7 +205,6 @@ def build_about(db_path: str, settings_path: str) -> dict:
     }
 
 
-
 # ======================
 # Routes
 # ======================
@@ -224,17 +212,15 @@ def build_about(db_path: str, settings_path: str) -> dict:
 @router.get("/settings", response_class=HTMLResponse)
 def settings_page(
     request: Request,
-    tab: str = Query("appearance"),            # ?tab=locations|journal|admindb|...
-    jlimit: int = Query(200, alias="jlimit"),  # nb de lignes à afficher dans Journal
+    tab: str = Query("appearance"),
+    jlimit: int = Query(200, alias="jlimit"),
 ):
     base = ingress_base(request)
     try:
         settings = load_settings()
 
-        # Seuils dynamiques (UI → fallback env → défauts)
         WARN_DAYS, CRIT_DAYS = get_retention_thresholds()
 
-        # ---- Emplacements (compteurs) ----
         items = list_locations()
         counts_total: dict[int, int] = {}
         counts_soon:  dict[int, int] = {}
@@ -255,10 +241,8 @@ def settings_page(
             it["soon_count"]   = int(counts_soon.get(lid, 0))
             it["urgent_count"] = int(counts_urg.get(lid, 0))
 
-        # ---- Journal ----
         events = list_events(jlimit)
 
-        # ---- Admin DB : liste des tables + chemin fichier ----
         with sqlite3.connect(DB_PATH) as c:
             c.row_factory = sqlite3.Row
             rows = c.execute("""
@@ -268,7 +252,6 @@ def settings_page(
             """).fetchall()
         db_tables = [r["name"] for r in rows]
 
-        # ---- ABOUT (version, chemins, tailles, runtime, counts) ----
         about = build_about(DB_PATH, SETTINGS_PATH_FALLBACK)
 
         return render_with_env(
@@ -277,21 +260,15 @@ def settings_page(
             BASE=base,
             page="settings",
             request=request,
-            SETTINGS=settings,     # exposé au template
-            # Emplacements
+            SETTINGS=settings,
             items=items,
-            # Journal
             events=events,
             jlimit=jlimit,
-            # Admin DB
             db_tables=db_tables,
             db_path=DB_PATH,
-            # Onglet actif
             tab=tab,
-            # Seuils (utile si tu veux les afficher dans l’UI)
             WARNING_DAYS=WARN_DAYS,
             CRITICAL_DAYS=CRIT_DAYS,
-            # À propos
             ABOUT=about,
         )
     except Exception as e:
@@ -320,13 +297,15 @@ def settings_save(
     log_consumption: str = Form(None),
     log_add_remove: str = Form(None),
     ask_move_on_delete: str = Form(None),
+    # Imprimante BLE
+    printer_enabled: str = Form(None),
+    printer_mac: str = Form(""),
 ):
     base = ingress_base(request)
 
     def as_bool(v) -> bool:
         return str(v).lower() in ("1", "true", "on", "yes")
 
-    # Garde-fous numériques
     try:
         retention_days_warning = max(0, int(retention_days_warning))
     except Exception:
@@ -336,7 +315,6 @@ def settings_save(
     except Exception:
         retention_days_critical = 14
 
-    # 🔒 Garde-fou logique : rouge ne doit pas être > jaune
     if retention_days_critical > retention_days_warning:
         retention_days_critical = retention_days_warning
 
@@ -349,11 +327,9 @@ def settings_save(
         "toast_warn": (toast_warn or "#ffb300").strip(),
         "toast_error": (toast_error or "#ef5350").strip(),
 
-        # seuils DLC (désormais côté UI)
         "retention_days_warning": retention_days_warning,
         "retention_days_critical": retention_days_critical,
 
-        # autres options existantes
         "enable_off_block": as_bool(enable_off_block),
         "enable_scanner": as_bool(enable_scanner),
         "ha_notifications": as_bool(ha_notifications),
@@ -361,11 +337,14 @@ def settings_save(
         "log_consumption": as_bool(log_consumption),
         "log_add_remove": as_bool(log_add_remove),
         "ask_move_on_delete": as_bool(ask_move_on_delete),
+
+        # Imprimante BLE
+        "printer_enabled": as_bool(printer_enabled),
+        "printer_mac": (printer_mac or "").strip().upper(),
     }
     try:
         saved = save_settings(normalized)
 
-        # rafraîchir l'état en mémoire (utile pour d'autres champs éventuels)
         try:
             request.app.state.settings = load_settings()
         except Exception:

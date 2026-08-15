@@ -1,6 +1,7 @@
 # domovra/app/settings_store.py
 import json
 import os
+import re
 import tempfile
 import shutil
 import threading
@@ -19,6 +20,9 @@ _cache_lock = threading.Lock()
 _cache_data: Dict[str, Any] | None = None
 _cache_ts: float = 0.0
 _CACHE_TTL = 10.0  # secondes
+
+# Regex adresse MAC BLE (XX:XX:XX:XX:XX:XX)
+_MAC_RE = re.compile(r'^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$')
 
 DEFAULTS: Dict[str, Any] = {
     "theme": "auto",                 # auto | light | dark
@@ -39,6 +43,10 @@ DEFAULTS: Dict[str, Any] = {
     "enable_off_block": True,        # bool — affiche le bloc EAN/OFF dans Achats
     "ha_notifications": False,       # bool — notifications HA (non implémenté)
 
+    # Imprimante étiquettes BLE
+    "printer_enabled": False,        # bool — active la fonctionnalité impression
+    "printer_mac": "",               # str  — adresse MAC BLE (ex: 7C:91:7B:E4:6B:49)
+
     # Journal
     "log_retention_days": 30,        # int >= 0
     "log_consumption": True,         # bool
@@ -57,6 +65,9 @@ def _is_hex_color(s: str) -> bool:
     h = s[1:]
     return len(h) in (3, 6) and all(c in "0123456789abcdefABCDEF" for c in h)
 
+def _is_valid_mac(s: str) -> bool:
+    return isinstance(s, str) and bool(_MAC_RE.match(s.strip()))
+
 def _only_known_keys(raw: Dict[str, Any]) -> Dict[str, Any]:
     """Ne conserve que les clés connues de DEFAULTS."""
     return {k: raw.get(k, DEFAULTS[k]) for k in DEFAULTS.keys()}
@@ -72,7 +83,7 @@ def _coerce_types(raw: Dict[str, Any]) -> Dict[str, Any]:
 
     for k in ("sidebar_compact", "enable_scanner", "enable_off_block",
               "ha_notifications", "log_consumption", "log_add_remove",
-              "ask_move_on_delete"):
+              "ask_move_on_delete", "printer_enabled"):
         out[k] = bool(out.get(k, DEFAULTS[k]))
 
     def _int_ge0(v, dflt):
@@ -103,6 +114,10 @@ def _coerce_types(raw: Dict[str, Any]) -> Dict[str, Any]:
         v = str(out.get(k, DEFAULTS[k])).strip()
         out[k] = v if _is_hex_color(v) else DEFAULTS[k]
 
+    # Adresse MAC : normalise en majuscules ou vide si invalide
+    mac = str(out.get("printer_mac", "")).strip().upper()
+    out["printer_mac"] = mac if _is_valid_mac(mac) else ""
+
     return out
 
 
@@ -128,7 +143,6 @@ def _atomic_write_json(path: str, payload: Dict[str, Any]) -> None:
 def load_settings() -> Dict[str, Any]:
     global _cache_data, _cache_ts
 
-    # Lecture depuis le cache si encore frais
     now = time.monotonic()
     with _cache_lock:
         if _cache_data is not None and (now - _cache_ts) < _CACHE_TTL:
@@ -179,7 +193,6 @@ def save_settings(payload: Dict[str, Any]) -> Dict[str, Any]:
         data = _coerce_types(filtered)
         _atomic_write_json(SETTINGS_PATH, data)
         LOGGER.info("Paramètres enregistrés: %s", data)
-        # Invalide le cache immédiatement
         _invalidate_cache()
         return data
     except Exception as e:
