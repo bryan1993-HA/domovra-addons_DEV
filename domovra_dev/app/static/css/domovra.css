@@ -470,6 +470,26 @@ select:focus {
     box-shadow: 0 0 0 3px rgba(99,102,241,.15);
 }
 
+/* ---- input[type="color"] : rétablit le rendu natif du swatch ---- */
+input[type="color"] {
+    padding: 3px;
+    width: 100%;
+    min-height: 40px;
+    cursor: pointer;
+    background: var(--bg-card, #111827);
+}
+input[type="color"]::-webkit-color-swatch-wrapper {
+    padding: 0;
+}
+input[type="color"]::-webkit-color-swatch {
+    border: none;
+    border-radius: 6px;
+}
+input[type="color"]::-moz-color-swatch {
+    border: none;
+    border-radius: 6px;
+}
+
 button {
     width: auto;
     min-height: 36px;
