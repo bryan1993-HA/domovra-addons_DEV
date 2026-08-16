@@ -1,12 +1,12 @@
 # domovra/app/routes/print_route.py
 """
-Routes d'impression d'étiquettes (Phomemo M110).
-Transport : BLE GATT via bleak (D-Bus host), fallback raw L2CAP ATT.
+Routes d'impression d'etiquettes (Phomemo M110).
+Transport : BLE GATT via raw L2CAP ATT (sans D-Bus/bluetoothd).
 """
 from __future__ import annotations
 
-import asyncio
 import logging
+import threading
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
@@ -19,7 +19,7 @@ from db import status_for
 logger = logging.getLogger("domovra.print_route")
 
 router = APIRouter()
-_BLE_TIMEOUT = 25.0
+_BLE_TIMEOUT = 35.0
 
 
 def _get_printer_mac() -> str | None:
@@ -36,7 +36,7 @@ async def print_lot_label(request: Request, lot_id: int):
     if not mac:
         return JSONResponse(
             {"ok": False, "error": "printer_disabled",
-             "message": "Imprimante non configurée ou désactivée dans les Paramètres."},
+             "message": "Imprimante non configuree ou desactivee dans les Parametres."},
             status_code=400,
         )
     WARNING_DAYS, CRITICAL_DAYS = get_retention_thresholds()
@@ -47,13 +47,33 @@ async def print_lot_label(request: Request, lot_id: int):
                              "message": f"Lot {lot_id} introuvable."}, status_code=404)
     lot["status"] = status_for(lot.get("best_before"), WARNING_DAYS, CRITICAL_DAYS)
     try:
-        from services.printer import _build_payload, print_via_bleak
+        from services.printer import _build_payload, print_ble
         payload = _build_payload(lot, ble=True)
-        result = await asyncio.wait_for(print_via_bleak(mac, payload), timeout=_BLE_TIMEOUT)
+
+        result: dict = {}
+        exc: list[Exception] = []
+        done = threading.Event()
+
+        def _run():
+            try:
+                result.update(print_ble(mac, payload, timeout=_BLE_TIMEOUT))
+            except Exception as e:
+                exc.append(e)
+            finally:
+                done.set()
+
+        t = threading.Thread(target=_run, daemon=True)
+        t.start()
+        import asyncio
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, done.wait, _BLE_TIMEOUT + 5)
+
+        if exc:
+            raise exc[0]
+        if not result:
+            return JSONResponse({"ok": False, "error": "timeout",
+                                 "message": f"Timeout ({_BLE_TIMEOUT:.0f}s) — imprimante allumee ?"}, status_code=504)
         return JSONResponse(result)
-    except asyncio.TimeoutError:
-        return JSONResponse({"ok": False, "error": "timeout",
-                             "message": f"Timeout ({_BLE_TIMEOUT}s) — imprimante allumée ?"}, status_code=504)
     except Exception as e:
         logger.exception("Impression lot %s: %s", lot_id, e)
         return JSONResponse({"ok": False, "error": "unexpected", "message": str(e)}, status_code=500)
@@ -65,11 +85,11 @@ async def print_test_label(request: Request):
     if not mac:
         return JSONResponse(
             {"ok": False, "error": "printer_disabled",
-             "message": "Imprimante non configurée ou désactivée dans les Paramètres."},
+             "message": "Imprimante non configuree ou desactivee dans les Parametres."},
             status_code=400,
         )
     try:
-        from services.printer import _build_payload, print_via_bleak
+        from services.printer import _build_payload, print_ble
         payload = _build_payload({
             "name": "Etiquette de test",
             "qty": "1", "unit": "pc",
@@ -78,11 +98,31 @@ async def print_test_label(request: Request):
             "location": "Domovra M110",
             "brand": "Test", "store": "",
         }, ble=True)
-        result = await asyncio.wait_for(print_via_bleak(mac, payload), timeout=_BLE_TIMEOUT)
+
+        result: dict = {}
+        exc: list[Exception] = []
+        done = threading.Event()
+
+        def _run():
+            try:
+                result.update(print_ble(mac, payload, timeout=_BLE_TIMEOUT))
+            except Exception as e:
+                exc.append(e)
+            finally:
+                done.set()
+
+        t = threading.Thread(target=_run, daemon=True)
+        t.start()
+        import asyncio
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, done.wait, _BLE_TIMEOUT + 5)
+
+        if exc:
+            raise exc[0]
+        if not result:
+            return JSONResponse({"ok": False, "error": "timeout",
+                                 "message": f"Timeout ({_BLE_TIMEOUT:.0f}s) — imprimante allumee ?"}, status_code=504)
         return JSONResponse(result)
-    except asyncio.TimeoutError:
-        return JSONResponse({"ok": False, "error": "timeout",
-                             "message": f"Timeout ({_BLE_TIMEOUT}s) — imprimante allumée ?"}, status_code=504)
     except Exception as e:
         logger.exception("Impression test: %s", e)
         return JSONResponse({"ok": False, "error": "unexpected", "message": str(e)}, status_code=500)
@@ -90,14 +130,41 @@ async def print_test_label(request: Request):
 
 @router.get("/api/print/diag")
 async def ble_diagnostic(request: Request):
-    """Diagnostic BLE rapide : D-Bus, bluetoothctl, bleak."""
+    """Diagnostic BLE : teste la connexion L2CAP ATT raw."""
     mac = _get_printer_mac()
     if not mac:
-        return JSONResponse({"ok": False, "message": "Imprimante non configurée."}, status_code=400)
+        return JSONResponse({"ok": False, "message": "Imprimante non configuree."}, status_code=400)
     try:
-        from services.printer import diagnose_ble
+        from services.printer import _ble_connect
+        import asyncio
         loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(None, diagnose_ble, mac)
+
+        result: dict = {}
+        exc: list[Exception] = []
+        done = threading.Event()
+
+        def _run():
+            try:
+                sock = _ble_connect(mac, timeout=15.0)
+                sock.close()
+                result["ok"] = True
+                result["message"] = f"Connexion BLE ATT reussie vers {mac}"
+            except TimeoutError as e:
+                result["ok"] = False
+                result["error"] = str(e)
+            except OSError as e:
+                result["ok"] = False
+                result["error"] = f"Erreur BLE : {e}"
+            except Exception as e:
+                result["ok"] = False
+                result["error"] = str(e)
+            finally:
+                done.set()
+
+        threading.Thread(target=_run, daemon=True).start()
+        await loop.run_in_executor(None, done.wait, 20)
+        if not result:
+            result = {"ok": False, "error": "Timeout diagnostic 20s"}
         return JSONResponse(result)
     except Exception as e:
         logger.exception("Diagnostic BLE : %s", e)
@@ -107,43 +174,41 @@ async def ble_diagnostic(request: Request):
 @router.get("/api/print/discover")
 async def discover_ble(request: Request):
     """
-    Découverte GATT complète : bleak en priorité, raw L2CAP ATT en fallback.
-    L'imprimante doit être allumée.
+    Decouverte GATT complete via raw L2CAP ATT.
+    L'imprimante doit etre allumee et en mode attente.
     """
     mac = _get_printer_mac()
     if not mac:
-        return JSONResponse({"ok": False, "message": "Imprimante non configurée."}, status_code=400)
+        return JSONResponse({"ok": False, "message": "Imprimante non configuree."}, status_code=400)
 
-    # Essai 1 : bleak (D-Bus)
     try:
-        from services.printer import discover_via_bleak, _setup_dbus
-        dbus = _setup_dbus()
-        if dbus:
-            result = await asyncio.wait_for(
-                discover_via_bleak(mac, timeout=20.0), timeout=25.0
-            )
-            if result.get("ok"):
-                return JSONResponse(result)
-            logger.warning("bleak discover échoué : %s — fallback raw L2CAP", result.get("error"))
-    except asyncio.TimeoutError:
-        logger.warning("bleak discover timeout — fallback raw L2CAP")
-    except Exception as e:
-        logger.warning("bleak discover exception : %s", e)
-
-    # Fallback : raw L2CAP ATT
-    try:
-        from services.printer import discover_raw_ble
+        from services.printer import discover_ble as _discover
+        import asyncio
         loop = asyncio.get_event_loop()
-        result = await asyncio.wait_for(
-            loop.run_in_executor(None, discover_raw_ble, mac),
-            timeout=30.0,
-        )
+
+        result: dict = {}
+        exc: list[Exception] = []
+        done = threading.Event()
+
+        def _run():
+            try:
+                result.update(_discover(mac, timeout=_BLE_TIMEOUT))
+            except Exception as e:
+                exc.append(e)
+                result["ok"] = False
+                result["error"] = str(e)
+            finally:
+                done.set()
+
+        threading.Thread(target=_run, daemon=True).start()
+        await loop.run_in_executor(None, done.wait, _BLE_TIMEOUT + 5)
+
+        if not result:
+            return JSONResponse({"ok": False, "error": f"Timeout {_BLE_TIMEOUT:.0f}s — imprimante allumee ?"},
+                                status_code=504)
         return JSONResponse(result)
-    except asyncio.TimeoutError:
-        return JSONResponse({"ok": False, "error": "timeout 30s — imprimante allumée ?"},
-                            status_code=504)
     except Exception as e:
-        logger.exception("Découverte raw BLE : %s", e)
+        logger.exception("Decouverte BLE : %s", e)
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
 
