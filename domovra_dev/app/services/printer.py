@@ -2,51 +2,47 @@
 """
 Service d'impression d'étiquettes pour imprimantes Phomemo M110.
 
-Transports (par ordre de préférence) :
-  1. BLE GATT via bleak — si bluetoothd tourne (hci0 via host_network)
-  2. RFCOMM classique — socket AF_BLUETOOTH noyau (host_network requis)
+Transport : Bluetooth RFCOMM (SPP, canal 1).
+Protocole : Tomaszu97 / M110 natif — 43 bytes/ligne, EXACTEMENT 240 lignes
+            (padding blanc si image plus courte).
 
-Références protocole :
+Références :
   https://github.com/Tomaszu97/phomemo
   https://github.com/vivier/phomemo-tools
-  https://github.com/hkeward/phomemo_printer
 """
 from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import struct
 from io import BytesIO
 import socket
 
 logger = logging.getLogger("domovra.printer")
 
-_RFCOMM_CHANNEL = 1
-_BLE_WRITE_UUID = "0000ae02-0000-1000-8000-00805f9b34fb"
+# ── Constantes protocole M110 ─────────────────────────────────
+PRINT_WIDTH   = 344    # pixels (43 bytes × 8)
+BYTES_PER_ROW = 43     # octets par ligne
+BLOCK_LINES   = 240    # nombre fixe de lignes par bloc (padding blanc si besoin)
+RFCOMM_CHANNEL = 1
 
-# ── Protocole RFCOMM : vivier/hkeward ESC/POS (48 bytes = 384 px) ──
-_R_WIDTH    = 384
-_R_BYTES    = 48
-_R_MAXLINES = 256
-
-_R_HEADER = bytes([
-    0x1B, 0x40,              # ESC @ — init
-    0x1B, 0x61, 0x01,        # ESC a 1 — centrer
-    0x1F, 0x11, 0x02, 0x04,  # activation propriétaire
-])
-_R_FOOTER = bytes([
-    0x1B, 0x64, 0x02,
-    0x1B, 0x64, 0x02,
-    0x1F, 0x11, 0x08,
-    0x1F, 0x11, 0x0E,
-    0x1F, 0x11, 0x07,
-    0x1F, 0x11, 0x09,
+# Header propriétaire M110 (Tomaszu97)
+_HEADER = bytes([
+    0x1B, 0x4E, 0x0D, 0x01,  # vitesse impression : 0x01 (lent) à 0x05 (rapide)
+    0x1B, 0x4E, 0x04, 0x0F,  # densité impression : 0x01 à 0x0F
+    0x1F, 0x11, 0x0A,         # type média : 0x0A = étiquettes avec espaces
 ])
 
-# ── Protocole BLE GATT ──
-_B_INIT      = bytes([0x1b, 0x40])
-_B_PRINT_END = bytes([0x1b, 0x64, 0x02])
+# Bloc GS v 0 avec 240 lignes fixes
+_BLOCK_MARKER = bytes([0x1D, 0x76, 0x30, 0x00]) \
+    + struct.pack("<H", BYTES_PER_ROW) \
+    + struct.pack("<H", BLOCK_LINES)
+
+# Footer propriétaire M110 (déclenche l'impression + avance papier)
+_FOOTER = bytes([
+    0x1F, 0xF0, 0x05, 0x00,
+    0x1F, 0xF0, 0x03, 0x00,
+])
 
 _TEST_DATA: dict = {
     "name": "Etiquette de test",
@@ -59,47 +55,54 @@ _TEST_DATA: dict = {
     "store": "",
 }
 
+# Ligne blanche (padding) : 43 zéros
+_WHITE_ROW = bytes(BYTES_PER_ROW)
+
 
 # ── Image ────────────────────────────────────────────────────
 
-def _render(data: dict, width: int):
-    from PIL import Image, ImageDraw, ImageFont
-    img = Image.new("1", (width, 220), color=1)
+def build_label_image(data: dict) -> bytes:
+    """Génère une image PNG de l'étiquette (pour prévisualisation)."""
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+    except ImportError:
+        raise RuntimeError("Pillow non installé")
+
+    img = Image.new("1", (PRINT_WIDTH, 220), color=1)
     draw = ImageDraw.Draw(img)
+
     try:
         ft = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 22)
         fb = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 17)
         fs = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 14)
     except Exception:
         ft = fb = fs = ImageFont.load_default()
+
     y = 6
     name = str(data.get("name") or data.get("article_name") or data.get("product") or "Produit")
-    if len(name) > width // 9:
-        name = name[:width // 9 - 3] + "..."
+    if len(name) > 26:
+        name = name[:23] + "..."
     draw.text((6, y), name, font=ft, fill=0); y += 28
-    draw.line([(6, y), (width - 6, y)], fill=0, width=1); y += 6
+    draw.line([(6, y), (PRINT_WIDTH - 6, y)], fill=0, width=1); y += 6
+
     qty = data.get("qty", ""); unit = data.get("unit", "")
     draw.text((6, y), f"Qte : {qty} {unit}".strip(), font=fb, fill=0); y += 22
+
     bb = data.get("best_before") or ""
     if bb:
         st = data.get("status", "green")
         pfx = {"green": "DLC", "yellow": "DLC !", "red": "DLC !!!"}.get(st, "DLC")
         draw.text((6, y), f"{pfx} : {bb}", font=fb, fill=0); y += 22
+
     loc = data.get("location") or ""
     if loc:
         draw.text((6, y), f"Lieu : {loc}", font=fs, fill=0); y += 18
+
     info = " | ".join(filter(None, [data.get("brand") or "", data.get("store") or ""]))
     if info:
         draw.text((6, y), info, font=fs, fill=0); y += 16
-    return img.crop((0, 0, width, y + 8))
 
-
-def build_label_image(data: dict) -> bytes:
-    try:
-        from PIL import Image, ImageDraw, ImageFont  # noqa: F401
-    except ImportError:
-        raise RuntimeError("Pillow non installé")
-    img = _render(data, _R_WIDTH)
+    img = img.crop((0, 0, PRINT_WIDTH, y + 8))
     buf = BytesIO(); img.save(buf, format="PNG")
     return buf.getvalue()
 
@@ -108,70 +111,64 @@ def build_test_label_image() -> bytes:
     return build_label_image(_TEST_DATA)
 
 
-# ── Protocole raster ────────────────────────────────────────
+# ── Protocole raster M110 ────────────────────────────────────
 
-def _rows(img, width: int, bpr: int) -> list[bytes]:
-    from PIL import Image as PI
-    img = img.convert("1")
+def _build_payload(data: dict) -> bytes:
+    """
+    Construit le payload complet pour le M110.
+    Produit EXACTEMENT BLOCK_LINES (240) lignes de BYTES_PER_ROW (43) octets
+    en paddant avec des lignes blanches si l'image est plus courte.
+    Plusieurs blocs si plus de 240 lignes (rare).
+    """
+    from PIL import Image
+
+    # Génère l'image à la bonne largeur
+    png_bytes = build_label_image(data)
+    img = Image.open(BytesIO(png_bytes)).convert("1")
     w, h = img.size
-    if w != width:
-        img = img.resize((width, int(h * width / w)), PI.LANCZOS).convert("1")
+
+    # Redimensionne si nécessaire
+    if w != PRINT_WIDTH:
+        img = img.resize((PRINT_WIDTH, int(h * PRINT_WIDTH / w)), Image.LANCZOS).convert("1")
         w, h = img.size
-    result = []
+
+    # Convertit chaque ligne en bytes raster
+    raw_rows: list[bytes] = []
     for y in range(h):
-        row = bytearray(bpr)
-        for x in range(width):
-            if img.getpixel((x, y)) == 0:
+        row = bytearray(BYTES_PER_ROW)
+        for x in range(PRINT_WIDTH):
+            if img.getpixel((x, y)) == 0:  # 0 = noir dans PIL "1"
                 row[x // 8] |= (0x80 >> (x % 8))
-        result.append(bytes(0x14 if b == 0x0A else b for b in row))
-    return result
+        # Substitution obligatoire : 0x0A (LF RFCOMM) → 0x14
+        raw_rows.append(bytes(0x14 if b == 0x0A else b for b in row))
 
+    logger.info("Image raster : %d lignes × %d octets", h, BYTES_PER_ROW)
 
-def _rfcomm_payload(data: dict) -> bytes:
-    img = _render(data, _R_WIDTH)
-    rs = _rows(img, _R_WIDTH, _R_BYTES)
-    buf = bytearray(_R_HEADER)
-    for i in range(0, len(rs), _R_MAXLINES):
-        batch = rs[i:i + _R_MAXLINES]
-        buf += bytes([0x1D, 0x76, 0x30, 0x00])
-        buf += struct.pack("<H", _R_BYTES)
-        buf += struct.pack("<H", len(batch))
-        for r in batch:
-            buf += r
-    buf += _R_FOOTER
+    buf = bytearray(_HEADER)
+
+    # Découpe en blocs de BLOCK_LINES lignes (padding blanc en fin de dernier bloc)
+    for block_start in range(0, max(h, 1), BLOCK_LINES):
+        block_rows = raw_rows[block_start:block_start + BLOCK_LINES]
+        # Pad à exactement BLOCK_LINES lignes avec du blanc
+        while len(block_rows) < BLOCK_LINES:
+            block_rows.append(_WHITE_ROW)
+
+        buf += _BLOCK_MARKER  # 1D 76 30 00 + 2B 00 + F0 00
+        for row in block_rows:
+            buf += row
+
+    buf += _FOOTER
     return bytes(buf)
 
 
-def _ble_payload(data: dict) -> bytes:
-    img = _render(data, _R_WIDTH)
-    rs = _rows(img, _R_WIDTH, _R_BYTES)
-    buf = bytearray(_B_INIT)
-    for i in range(0, len(rs), _R_MAXLINES):
-        batch = rs[i:i + _R_MAXLINES]
-        buf += bytes([0x1D, 0x76, 0x30, 0x00])
-        buf += struct.pack("<H", _R_BYTES)
-        buf += struct.pack("<H", len(batch))
-        for r in batch:
-            buf += r
-    buf += _B_PRINT_END
-    return bytes(buf)
-
-
-# ── Transport ────────────────────────────────────────────────
-
-def _has_dbus() -> bool:
-    addr = os.environ.get("DBUS_SYSTEM_BUS_ADDRESS", "")
-    if addr.startswith("unix:path="):
-        return os.path.exists(addr[len("unix:path="):])
-    return os.path.exists("/run/dbus/system_bus_socket")
-
+# ── Transport RFCOMM ─────────────────────────────────────────
 
 def _send_rfcomm(mac: str, payload: bytes, timeout: int = 15) -> None:
-    logger.info("RFCOMM → %s (%d octets)", mac, len(payload))
+    logger.info("RFCOMM → %s canal %d (%d octets)", mac, RFCOMM_CHANNEL, len(payload))
     sock = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
     sock.settimeout(timeout)
     try:
-        sock.connect((mac, _RFCOMM_CHANNEL))
+        sock.connect((mac, RFCOMM_CHANNEL))
         for i in range(0, len(payload), 512):
             sock.sendall(payload[i:i + 512])
         logger.info("RFCOMM OK → %s", mac)
@@ -182,37 +179,19 @@ def _send_rfcomm(mac: str, payload: bytes, timeout: int = 15) -> None:
             pass
 
 
-async def _send_ble(mac: str, payload: bytes) -> None:
-    from bleak import BleakClient
-    logger.info("BLE → %s (%d octets)", mac, len(payload))
-    async with BleakClient(mac, timeout=10.0) as client:
-        if not client.is_connected:
-            raise RuntimeError(f"BLE connexion échouée : {mac}")
-        for i in range(0, len(payload), 182):
-            await client.write_gatt_char(_BLE_WRITE_UUID, payload[i:i + 182], response=False)
-            await asyncio.sleep(0.02)
-    logger.info("BLE OK → %s", mac)
-
-
 async def send_to_printer(mac: str, image_data: dict) -> None:
-    if _has_dbus():
-        logger.info("Transport: BLE GATT")
-        await _send_ble(mac, _ble_payload(image_data))
-    else:
-        logger.info("Transport: RFCOMM")
-        payload = _rfcomm_payload(image_data)
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, _send_rfcomm, mac, payload)
+    payload = _build_payload(image_data)
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, _send_rfcomm, mac, payload)
 
 
 def print_lot(mac: str, lot_data: dict) -> None:
+    """Lance l'impression d'un lot (fire-and-forget)."""
     import threading
     def _run():
-        loop = asyncio.new_event_loop()
         try:
-            loop.run_until_complete(send_to_printer(mac, lot_data))
+            payload = _build_payload(lot_data)
+            _send_rfcomm(mac, payload)
         except Exception as e:
             logger.error("Impression lot échouée: %s", e)
-        finally:
-            loop.close()
     threading.Thread(target=_run, daemon=True).start()
