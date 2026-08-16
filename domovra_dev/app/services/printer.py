@@ -2,15 +2,12 @@
 """
 Service d'impression d'étiquettes pour imprimantes Phomemo M110.
 
-Transport principal : BLE GATT via socket L2CAP ATT brut (sans D-Bus).
-  Fonctionne avec host_network: true dans config.json (accès kernel BT).
-  Le M110 n'imprime PAS via RFCOMM canal 1 (canal config/statut uniquement).
+Transport : BLE GATT via socket L2CAP ATT brut (sans D-Bus).
+  - host_network: true requis dans config.json
+  - Connexion BLE directe au kernel (pas via bluetoothd/D-Bus)
+  - L'imprimante doit être allumée et en mode BLE actif
 
-Protocole raster : Tomaszu97 / M110 natif — 43 bytes/ligne, EXACTEMENT 240 lignes.
-
-Références :
-  https://github.com/Tomaszu97/phomemo
-  https://github.com/vivier/phomemo-tools
+Protocole raster : Tomaszu97 — 43 bytes/ligne, 240 lignes.
 """
 from __future__ import annotations
 
@@ -144,15 +141,15 @@ def _build_payload(data: dict, ble: bool = False) -> bytes:
     return bytes(buf)
 
 
-# ── BLE GATT : helpers bas niveau ─────────────────────────────
+# ── BLE GATT : helpers bas niveau ────────────────────────────
 #
 # struct sockaddr_l2 (linux/bluetooth/l2cap.h) :
-#   __u16  l2_family     AF_BLUETOOTH = 31
-#   __le16 l2_psm        0 pour ATT fixed channel
-#   bdaddr_t l2_bdaddr   6 octets, ordre inversé
-#   __le16 l2_cid        4 = ATT fixed channel BLE
-#   __u8   l2_bdaddr_type  1=LE_PUBLIC  2=LE_RANDOM
-#   __u8   <padding>     (pour aligner à 2 octets → total 14 octets)
+#   __u16  l2_family      AF_BLUETOOTH = 31
+#   __le16 l2_psm         0 pour ATT fixed channel
+#   bdaddr_t l2_bdaddr    6 octets, ordre inversé
+#   __le16 l2_cid         4 = ATT fixed channel BLE
+#   __u8   l2_bdaddr_type 1=LE_PUBLIC  2=LE_RANDOM
+#   __u8   <padding>      alignement struct à 2 octets
 
 _AF_BLUETOOTH  = 31
 _BTPROTO_L2CAP = 0
@@ -166,7 +163,6 @@ _BT_SECURITY_LOW    = 1
 _BT_CHANNEL_POLICY  = 10
 _BT_CHANNEL_POLICY_LE_PREFERRED = 2
 
-# ATT opcodes
 _ATT_ERROR_RSP        = 0x01
 _ATT_EXCHANGE_MTU_REQ = 0x02
 _ATT_EXCHANGE_MTU_RSP = 0x03
@@ -178,15 +174,14 @@ _ATT_WRITE_CMD        = 0x52
 
 
 class _SockaddrL2(ctypes.Structure):
-    """struct sockaddr_l2 avec padding explicite (14 octets)."""
     _pack_ = 1
     _fields_ = [
-        ("l2_family",     ctypes.c_uint16),
-        ("l2_psm",        ctypes.c_uint16),
-        ("l2_bdaddr",     ctypes.c_uint8 * 6),
-        ("l2_cid",        ctypes.c_uint16),
+        ("l2_family",      ctypes.c_uint16),
+        ("l2_psm",         ctypes.c_uint16),
+        ("l2_bdaddr",      ctypes.c_uint8 * 6),
+        ("l2_cid",         ctypes.c_uint16),
         ("l2_bdaddr_type", ctypes.c_uint8),
-        ("_pad",          ctypes.c_uint8),   # alignement
+        ("_pad",           ctypes.c_uint8),
     ]
 
 
@@ -195,28 +190,17 @@ def _mac_to_bytes(mac: str) -> bytes:
 
 
 def _get_libc() -> ctypes.CDLL:
-    """Charge libc avec use_errno pour capturer errno après les syscalls."""
-    for name in [ctypes.util.find_library("c"), "libc.musl-aarch64.so.1",
-                 "libc.musl-armhf.so.1", "libc.so.6"]:
+    for name in [ctypes.util.find_library("c"),
+                 "libc.musl-aarch64.so.1", "libc.musl-armhf.so.1", "libc.so.6"]:
         try:
             if name is None:
                 continue
             lib = ctypes.CDLL(name, use_errno=True)
-            _ = lib.connect  # vérifie que le symbole existe
+            _ = lib.connect
             return lib
         except (OSError, AttributeError):
             continue
-    # Fallback : charge depuis l'espace d'adressage courant du processus
     return ctypes.CDLL(None, use_errno=True)
-
-
-def _raw_syscall(fn, *args) -> int:
-    """Appelle une fonction libc et retourne son résultat (ou lève OSError)."""
-    ret = fn(*args)
-    if ret < 0:
-        err = ctypes.get_errno()
-        raise OSError(err, os.strerror(err))
-    return ret
 
 
 def _make_l2_addr(mac: str, cid: int, addr_type: int) -> _SockaddrL2:
@@ -232,53 +216,55 @@ def _make_l2_addr(mac: str, cid: int, addr_type: int) -> _SockaddrL2:
     return addr
 
 
-def _ble_socket_connect(mac: str, addr_type: int, timeout: float,
-                        with_bind: bool = True,
-                        with_security: bool = True) -> socket.socket:
+def _set_connect_timeout(s: socket.socket, seconds: int) -> None:
+    """SO_SNDTIMEO : timeout pour connect() bloquant."""
+    timeval = struct.pack("ll", seconds, 0)
+    try:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_SNDTIMEO, timeval)
+    except OSError:
+        pass
+
+
+def _ble_connect(mac: str, addr_type: int, timeout: int = 10) -> socket.socket:
     """
-    Crée un socket L2CAP ATT BLE et se connecte au M110.
-    Lève OSError en cas d'échec.
+    Ouvre une connexion BLE L2CAP ATT vers le M110.
+    L'imprimante doit être allumée et en mode BLE actif.
+    Lève OSError si connexion impossible dans le délai.
     """
     libc = _get_libc()
-    libc.connect.restype  = ctypes.c_int
-    libc.bind.restype     = ctypes.c_int
+    libc.connect.restype = ctypes.c_int
+    libc.bind.restype    = ctypes.c_int
 
     s = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_SEQPACKET, socket.BTPROTO_L2CAP)
-    s.setblocking(True)
-
     try:
-        # Optionnel : sécurité BLE niveau LOW
-        if with_security:
-            sec = struct.pack("BB", _BT_SECURITY_LOW, 0)
-            try:
-                s.setsockopt(_SOL_BLUETOOTH, _BT_SECURITY, sec)
-            except OSError:
-                pass
+        # SO_SNDTIMEO : timeout bloquant pour connect()
+        _set_connect_timeout(s, timeout)
 
-        # Optionnel : préférence canal LE
+        # BT_SECURITY LOW (requis sur certains kernels avant connect)
         try:
-            s.setsockopt(_SOL_BLUETOOTH, _BT_CHANNEL_POLICY,
-                         ctypes.c_int(_BT_CHANNEL_POLICY_LE_PREFERRED))
+            s.setsockopt(_SOL_BLUETOOTH, _BT_SECURITY,
+                         struct.pack("BB", _BT_SECURITY_LOW, 0))
         except OSError:
             pass
 
-        # Optionnel : bind local (any adapter, ATT CID, LE_PUBLIC)
-        if with_bind:
-            local = _make_l2_addr("00:00:00:00:00:00", _ATT_CID, _LE_PUBLIC)
-            try:
-                _raw_syscall(libc.bind, s.fileno(),
-                             ctypes.byref(local), ctypes.sizeof(local))
-            except OSError:
-                pass  # bind optionnel — continuer même si échec
+        # Bind local (any adapter, ATT CID, LE_PUBLIC)
+        local = _make_l2_addr("00:00:00:00:00:00", _ATT_CID, _LE_PUBLIC)
+        try:
+            libc.bind(s.fileno(), ctypes.byref(local), ctypes.sizeof(local))
+        except OSError:
+            pass
 
         # Connexion distante
         remote = _make_l2_addr(mac, _ATT_CID, addr_type)
-        _raw_syscall(libc.connect, s.fileno(),
-                     ctypes.byref(remote), ctypes.sizeof(remote))
+        ret = libc.connect(s.fileno(), ctypes.byref(remote), ctypes.sizeof(remote))
+        if ret < 0:
+            err = ctypes.get_errno()
+            raise OSError(err, os.strerror(err))
 
-        s.settimeout(timeout)
+        # Restaure un timeout de lecture/écriture classique
+        s.settimeout(float(timeout))
+        logger.info("BLE ATT connecté à %s (addr_type=%d)", mac, addr_type)
         return s
-
     except Exception:
         try: s.close()
         except Exception: pass
@@ -305,16 +291,15 @@ def _uuid_str(raw: bytes) -> str:
     return raw.hex()
 
 
-# ── Diagnostic complet BLE ────────────────────────────────────
+# ── Diagnostic complet ────────────────────────────────────────
 
 def _run_cmd(cmd: list[str], timeout: int = 5) -> dict:
-    """Exécute une commande shell, retourne stdout/stderr/returncode."""
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
         return {"ok": r.returncode == 0, "stdout": r.stdout.strip(),
                 "stderr": r.stderr.strip(), "rc": r.returncode}
     except FileNotFoundError:
-        return {"ok": False, "error": f"{cmd[0]}: commande introuvable"}
+        return {"ok": False, "error": f"{cmd[0]}: introuvable"}
     except subprocess.TimeoutExpired:
         return {"ok": False, "error": f"timeout {timeout}s"}
     except Exception as e:
@@ -322,7 +307,6 @@ def _run_cmd(cmd: list[str], timeout: int = 5) -> dict:
 
 
 def _find_sockets(paths: list[str]) -> list[str]:
-    """Cherche les fichiers socket Unix dans les chemins donnés."""
     import stat
     found = []
     for base in paths:
@@ -342,81 +326,73 @@ def _find_sockets(paths: list[str]) -> list[str]:
 
 def diagnose_ble(mac: str) -> dict:
     """
-    Diagnostic complet BLE pour le M110.
-    Retourne un dict JSON avec les résultats de chaque test.
+    Diagnostic BLE complet. Chaque connect L2CAP est limité à 5s (SO_SNDTIMEO).
+    L'imprimante DOIT être allumée et active pendant ce test.
     """
-    results: dict = {"mac": mac, "tests": {}}
+    results: dict = {"mac": mac, "note": "Imprimante doit etre allumee pendant ce test", "tests": {}}
     t = results["tests"]
 
-    # ── 1. Interfaces HCI ───────────────────────────────────
-    hci_devs = []
+    # 1. Interfaces HCI
     try:
-        hci_devs = os.listdir("/sys/class/bluetooth")
-    except OSError:
-        pass
-    t["hci_devices"] = hci_devs
+        t["hci_devices"] = os.listdir("/sys/class/bluetooth")
+    except OSError as e:
+        t["hci_devices"] = str(e)
 
-    # ── 2. Sockets D-Bus ────────────────────────────────────
+    # 2. Sockets D-Bus / Unix
     t["dbus_sockets"] = _find_sockets(["/run", "/var/run", "/tmp"])
 
-    # ── 3. Commandes BT disponibles ─────────────────────────
+    # 3. Commandes BT
     for cmd_name in ["bluetoothctl", "hciconfig", "hcitool", "gatttool", "btmgmt"]:
         t[f"cmd_{cmd_name}"] = _run_cmd(["which", cmd_name])
 
-    # ── 4. hciconfig ────────────────────────────────────────
+    # 4. hciconfig
     t["hciconfig"] = _run_cmd(["hciconfig", "-a"], timeout=5)
 
-    # ── 5. Test création socket L2CAP ───────────────────────
+    # 5. btmgmt info
+    t["btmgmt_info"] = _run_cmd(["btmgmt", "info"], timeout=5)
+
+    # 6. Création socket L2CAP
     try:
-        s = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_SEQPACKET,
-                          socket.BTPROTO_L2CAP)
+        s = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_SEQPACKET, socket.BTPROTO_L2CAP)
         s.close()
         t["l2cap_socket_create"] = {"ok": True}
     except OSError as e:
         t["l2cap_socket_create"] = {"ok": False, "errno": e.errno, "msg": str(e)}
 
-    # ── 6. Test connexion L2CAP ATT : toutes variantes ──────
+    # 7. Connexions L2CAP ATT : variantes (5s timeout chacune)
     libc = _get_libc()
     libc.connect.restype = ctypes.c_int
     libc.bind.restype    = ctypes.c_int
+    CONN_TIMEOUT = 5
 
-    def _try_connect(label: str, addr_type: int,
-                     do_bind: bool, do_security: bool, do_policy: bool):
+    def _try(label: str, addr_type: int, do_bind: bool, do_security: bool):
         s = None
         try:
             s = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_SEQPACKET,
                               socket.BTPROTO_L2CAP)
-            s.setblocking(True)
+            _set_connect_timeout(s, CONN_TIMEOUT)
 
             if do_security:
                 try:
                     s.setsockopt(_SOL_BLUETOOTH, _BT_SECURITY,
                                  struct.pack("BB", _BT_SECURITY_LOW, 0))
                 except OSError as e:
-                    t[label + "_setsockopt_security"] = {"errno": e.errno, "msg": str(e)}
-
-            if do_policy:
-                try:
-                    s.setsockopt(_SOL_BLUETOOTH, _BT_CHANNEL_POLICY,
-                                 ctypes.c_int(_BT_CHANNEL_POLICY_LE_PREFERRED))
-                except OSError as e:
-                    t[label + "_setsockopt_policy"] = {"errno": e.errno, "msg": str(e)}
+                    t[label + "_setsockopt"] = {"errno": e.errno, "msg": str(e)}
 
             if do_bind:
-                local = _make_l2_addr("00:00:00:00:00:00", _ATT_CID, addr_type)
+                local = _make_l2_addr("00:00:00:00:00:00", _ATT_CID, _LE_PUBLIC)
                 try:
                     libc.bind(s.fileno(), ctypes.byref(local), ctypes.sizeof(local))
                 except OSError as e:
                     t[label + "_bind"] = {"errno": e.errno, "msg": str(e)}
 
             remote = _make_l2_addr(mac, _ATT_CID, addr_type)
-            ret = libc.connect(s.fileno(),
-                               ctypes.byref(remote), ctypes.sizeof(remote))
+            ret = libc.connect(s.fileno(), ctypes.byref(remote), ctypes.sizeof(remote))
             if ret < 0:
                 err = ctypes.get_errno()
                 t[label] = {"ok": False, "errno": err, "msg": os.strerror(err)}
             else:
-                t[label] = {"ok": True, "msg": "connexion BLE ATT etablie"}
+                t[label] = {"ok": True, "msg": "CONNEXION BLE ATT REUSSIE"}
         except OSError as e:
             t[label] = {"ok": False, "errno": e.errno, "msg": str(e)}
         except Exception as e:
@@ -426,57 +402,49 @@ def diagnose_ble(mac: str) -> dict:
                 try: s.close()
                 except Exception: pass
 
-    _try_connect("ble_public_plain",   _LE_PUBLIC, False, False, False)
-    _try_connect("ble_public_bind",    _LE_PUBLIC, True,  False, False)
-    _try_connect("ble_public_full",    _LE_PUBLIC, True,  True,  True)
-    _try_connect("ble_random_plain",   _LE_RANDOM, False, False, False)
-    _try_connect("ble_random_bind",    _LE_RANDOM, True,  False, False)
-    _try_connect("ble_random_full",    _LE_RANDOM, True,  True,  True)
+    _try("ble_public_no_bind",  _LE_PUBLIC, False, False)
+    _try("ble_public_bind",     _LE_PUBLIC, True,  False)
+    _try("ble_public_full",     _LE_PUBLIC, True,  True)
+    _try("ble_random_no_bind",  _LE_RANDOM, False, False)
+    _try("ble_random_bind",     _LE_RANDOM, True,  False)
+    _try("ble_random_full",     _LE_RANDOM, True,  True)
 
-    # ── 7. RFCOMM sur d'autres canaux (connexion seulement) ──
-    rfcomm_results = {}
+    # 8. RFCOMM canaux 2-5 (3s timeout)
+    rfcomm = {}
     for ch in [2, 3, 4, 5]:
         try:
-            s = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM,
-                              socket.BTPROTO_RFCOMM)
-            s.settimeout(4)
+            s = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
+            s.settimeout(3)
             s.connect((mac, ch))
-            rfcomm_results[ch] = "connecté"
+            rfcomm[ch] = "connecte"
             s.close()
         except OSError as e:
-            rfcomm_results[ch] = f"errno={e.errno} {e.strerror}"
+            rfcomm[ch] = f"errno={e.errno} {e.strerror}"
         except Exception as e:
-            rfcomm_results[ch] = str(e)
-    t["rfcomm_channels"] = rfcomm_results
-
-    # ── 8. hcitool lescan bref ───────────────────────────────
-    t["hcitool_lescan"] = _run_cmd(
-        ["hcitool", "lescan", "--duration=3"], timeout=6
-    )
-
-    # ── 9. btmgmt info ──────────────────────────────────────
-    t["btmgmt_info"] = _run_cmd(["btmgmt", "info"], timeout=5)
+            rfcomm[ch] = str(e)
+    t["rfcomm_channels_2_5"] = rfcomm
 
     return results
 
 
-# ── Découverte GATT (si BLE L2CAP fonctionne) ─────────────────
+# ── Découverte GATT ───────────────────────────────────────────
 
-def discover_ble_characteristics(mac: str, timeout: float = 15.0) -> dict:
-    """Connexion BLE ATT + découverte GATT complète."""
+def discover_ble_characteristics(mac: str, timeout: int = 15) -> dict:
+    """Connexion BLE ATT + découverte GATT complète. Imprimante doit être allumée."""
     sock = None
     connected_type = -1
 
     for addr_type in (_LE_PUBLIC, _LE_RANDOM):
         try:
-            sock = _ble_socket_connect(mac, addr_type, timeout)
+            sock = _ble_connect(mac, addr_type, timeout=timeout)
             connected_type = addr_type
             break
         except OSError as e:
             logger.debug("discover addr_type=%d : %s", addr_type, e)
 
     if sock is None:
-        return {"ok": False, "error": "Connexion BLE impossible (voir /api/print/diag)"}
+        return {"ok": False,
+                "error": "Connexion BLE impossible — imprimante allumée ? Réessayer après avoir appuyé sur le bouton de l'imprimante."}
 
     try:
         mtu = _att_exchange_mtu(sock)
@@ -563,9 +531,17 @@ def discover_ble_characteristics(mac: str, timeout: float = 15.0) -> dict:
 
 # ── Impression BLE GATT ───────────────────────────────────────
 
-def send_ble_gatt(mac: str, payload: bytes, handle: int, timeout: float = 30.0) -> None:
+def send_ble_gatt(mac: str, payload: bytes, handle: int, timeout: int = 20) -> None:
     """Envoi payload vers M110 via BLE GATT Write Without Response."""
-    sock = _ble_socket_connect(mac, _LE_PUBLIC, timeout)
+    for addr_type in (_LE_PUBLIC, _LE_RANDOM):
+        try:
+            sock = _ble_connect(mac, addr_type, timeout=timeout)
+            break
+        except OSError:
+            pass
+    else:
+        raise OSError("Connexion BLE GATT impossible")
+
     try:
         mtu = _att_exchange_mtu(sock)
         chunk = max(1, mtu - 3)
@@ -584,17 +560,15 @@ async def send_to_printer_ble(mac: str, image_data: dict, handle: int) -> None:
     await loop.run_in_executor(None, send_ble_gatt, mac, payload, handle)
 
 
-# ── Transport RFCOMM (secours) ────────────────────────────────
+# ── Transport RFCOMM (secours — ne fonctionne pas sur M110) ──
 
 def _send_rfcomm(mac: str, payload: bytes, timeout: int = 15) -> None:
-    logger.info("RFCOMM → %s canal %d (%d octets)", mac, RFCOMM_CHANNEL, len(payload))
     sock = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
     sock.settimeout(timeout)
     try:
         sock.connect((mac, RFCOMM_CHANNEL))
         for i in range(0, len(payload), 512):
             sock.sendall(payload[i:i + 512])
-        logger.info("RFCOMM OK → %s", mac)
     finally:
         try: sock.close()
         except Exception: pass
