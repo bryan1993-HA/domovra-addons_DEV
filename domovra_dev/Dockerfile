@@ -8,20 +8,18 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     VENV_PATH=/opt/venv \
     PATH=/opt/venv/bin:$PATH
 
-# Dépendances système : Pillow (étiquettes) + bluez pour BLE via bleak
+# Dépendances système : bluez + dbus (pour bluetoothd + bleak) + Pillow
 RUN apk add --no-cache \
     python3 py3-pip \
     bluez bluez-libs \
+    dbus \
     zlib jpeg libpng freetype \
     ttf-dejavu
 
 WORKDIR ${APP_HOME}
-# Code de l'app
 COPY app ${APP_HOME}/
-# ⬅️ Ajoute le manifest de l'add-on dans l'image
 COPY config.json ${APP_HOME}/config.json
 
-# Dépendances Python (versions pinées pour builds reproductibles)
 RUN python3 -m venv ${VENV_PATH} \
  && ${VENV_PATH}/bin/pip install --no-cache-dir \
     "fastapi>=0.110.0,<1.0.0" \
