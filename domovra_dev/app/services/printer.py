@@ -11,7 +11,6 @@ import asyncio
 import logging
 import struct
 from io import BytesIO
-from typing import Any
 
 logger = logging.getLogger("domovra.printer")
 
@@ -25,8 +24,19 @@ _NOTIFY_UUID   = "0000ae01-0000-1000-8000-00805f9b34fb"
 
 # Commandes protocole Phomemo
 _CMD_INIT      = bytes([0x1b, 0x40])          # ESC @ — init imprimante
-_CMD_FEED      = bytes([0x1b, 0x64, 0x02])    # ESC d 2 — avance papier 2 lignes
 _CMD_PRINT_END = bytes([0x1b, 0x64, 0x04])    # ESC d 4 — fin impression + coupe
+
+# Données de l'étiquette de test
+_TEST_DATA: dict = {
+    "name": "Etiquette de test",
+    "qty": "1",
+    "unit": "pc",
+    "best_before": "2099-12-31",
+    "status": "green",
+    "location": "Domovra M110",
+    "brand": "Test",
+    "store": "",
+}
 
 
 def _build_image_commands(img_1bit) -> bytes:
@@ -36,7 +46,6 @@ def _build_image_commands(img_1bit) -> bytes:
     """
     from PIL import Image
 
-    # S'assure que l'image fait exactement PRINT_WIDTH de large
     w, h = img_1bit.size
     if w != PRINT_WIDTH:
         img_1bit = img_1bit.resize((PRINT_WIDTH, int(h * PRINT_WIDTH / w)), Image.LANCZOS)
@@ -72,41 +81,34 @@ def build_label_image(data: dict) -> bytes:
     except ImportError:
         raise RuntimeError("Pillow non installé — impossible de générer l'étiquette")
 
-    # Hauteur dynamique selon le contenu
     img = Image.new("1", (PRINT_WIDTH, 220), color=1)  # 1 = blanc
     draw = ImageDraw.Draw(img)
 
-    # Police de base (PIL par défaut, toujours disponible)
     try:
         font_title = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 28)
         font_body  = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 22)
         font_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 18)
     except Exception:
-        # Fallback : police bitmap PIL intégrée
         font_title = ImageFont.load_default()
         font_body  = font_title
         font_small = font_title
 
     y = 8
 
-    # Nom du produit (tronqué si trop long)
     name = str(data.get("name") or data.get("article_name") or data.get("product") or "Produit")
     if len(name) > 28:
         name = name[:25] + "..."
     draw.text((8, y), name, font=font_title, fill=0)
     y += 36
 
-    # Ligne séparatrice
     draw.line([(8, y), (PRINT_WIDTH - 8, y)], fill=0, width=1)
     y += 8
 
-    # Quantité + unité
     qty  = data.get("qty", "")
     unit = data.get("unit", "")
     draw.text((8, y), f"Qte : {qty} {unit}".strip(), font=font_body, fill=0)
     y += 28
 
-    # DLC
     best_before = data.get("best_before") or ""
     if best_before:
         status = data.get("status", "green")
@@ -114,13 +116,11 @@ def build_label_image(data: dict) -> bytes:
         draw.text((8, y), f"{dlc_prefix} : {best_before}", font=font_body, fill=0)
         y += 28
 
-    # Emplacement
     location = data.get("location") or ""
     if location:
         draw.text((8, y), f"Lieu : {location}", font=font_small, fill=0)
         y += 24
 
-    # Marque / store
     brand = data.get("brand") or ""
     store = data.get("store") or ""
     info = " | ".join(filter(None, [brand, store]))
@@ -128,7 +128,6 @@ def build_label_image(data: dict) -> bytes:
         draw.text((8, y), info, font=font_small, fill=0)
         y += 22
 
-    # Recadre à la hauteur réelle + marge basse
     img = img.crop((0, 0, PRINT_WIDTH, y + 10))
 
     buf = BytesIO()
@@ -138,22 +137,16 @@ def build_label_image(data: dict) -> bytes:
 
 def build_test_label_image() -> bytes:
     """Génère une étiquette de test."""
-    return build_label_image({
-        "name": "Etiquette de test",
-        "qty": "1",
-        "unit": "pc",
-        "best_before": "2099-12-31",
-        "status": "green",
-        "location": "Domovra M110",
-        "brand": "Test",
-        "store": "",
-    })
+    return build_label_image(_TEST_DATA)
 
 
-async def _send_to_printer(mac: str, image_data: dict) -> None:
-    """Connexion BLE + envoi des commandes d'impression (async)."""
+async def send_to_printer(mac: str, image_data: dict) -> None:
+    """
+    Connexion BLE + envoi des commandes d'impression (async).
+    Lève une exception en cas d'erreur (à wrapper avec asyncio.wait_for pour le timeout).
+    """
     try:
-        from bleak import BleakClient, BleakError
+        from bleak import BleakClient
     except ImportError:
         raise RuntimeError("bleak non installé — impossible d'imprimer via BLE")
 
@@ -162,52 +155,31 @@ async def _send_to_printer(mac: str, image_data: dict) -> None:
     img = Image.open(BytesIO(img_bytes)).convert("1")
     commands = _CMD_INIT + _build_image_commands(img) + _CMD_PRINT_END
 
-    logger.info("Connexion BLE → %s", mac)
-    try:
-        async with BleakClient(mac, timeout=10.0) as client:
-            if not client.is_connected:
-                raise RuntimeError(f"Impossible de se connecter à {mac}")
+    logger.info("Connexion BLE → %s (%d octets)", mac, len(commands))
+    async with BleakClient(mac, timeout=10.0) as client:
+        if not client.is_connected:
+            raise RuntimeError(f"Impossible de se connecter à {mac}")
 
-            # Envoi par chunks de 182 octets (limite MTU BLE courante)
-            chunk_size = 182
-            for i in range(0, len(commands), chunk_size):
-                chunk = commands[i:i + chunk_size]
-                await client.write_gatt_char(_WRITE_UUID, chunk, response=False)
-                await asyncio.sleep(0.02)  # petite pause inter-chunk
+        chunk_size = 182
+        for i in range(0, len(commands), chunk_size):
+            chunk = commands[i:i + chunk_size]
+            await client.write_gatt_char(_WRITE_UUID, chunk, response=False)
+            await asyncio.sleep(0.02)
 
-            logger.info("Impression envoyée avec succès à %s", mac)
-
-    except Exception as e:
-        logger.error("Erreur impression BLE %s: %s", mac, e)
-        raise
+        logger.info("Impression envoyée avec succès à %s", mac)
 
 
 def print_lot(mac: str, lot_data: dict) -> None:
-    """Lance l'impression d'un lot (fire-and-forget dans un thread asyncio)."""
+    """Lance l'impression d'un lot (fire-and-forget dans un thread asyncio dédié)."""
     import threading
 
     def _run():
         loop = asyncio.new_event_loop()
         try:
-            loop.run_until_complete(_send_to_printer(mac, lot_data))
+            loop.run_until_complete(send_to_printer(mac, lot_data))
         except Exception as e:
-            logger.error("Impression échouée: %s", e)
+            logger.error("Impression lot échouée: %s", e)
         finally:
             loop.close()
 
-    t = threading.Thread(target=_run, daemon=True)
-    t.start()
-
-
-def print_test(mac: str) -> None:
-    """Lance une impression de test."""
-    print_lot(mac, {
-        "name": "Etiquette de test",
-        "qty": "1",
-        "unit": "pc",
-        "best_before": "2099-12-31",
-        "status": "green",
-        "location": "Domovra M110",
-        "brand": "Test",
-        "store": "",
-    })
+    threading.Thread(target=_run, daemon=True).start()

@@ -4,10 +4,11 @@ Routes d'impression d'étiquettes BLE (Phomemo M110 et compatibles).
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from io import BytesIO
 
-from fastapi import APIRouter, Request, Form
+from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
 
 from settings_store import load_settings
@@ -18,6 +19,9 @@ from db import status_for
 logger = logging.getLogger("domovra.print_route")
 
 router = APIRouter()
+
+# Timeout BLE pour les impressions synchrones (test + aperçu)
+_BLE_TIMEOUT = 20
 
 
 def _get_printer_mac() -> str | None:
@@ -31,7 +35,7 @@ def _get_printer_mac() -> str | None:
 
 @router.post("/api/print/lot/{lot_id}")
 async def print_lot_label(request: Request, lot_id: int):
-    """Lance l'impression de l'étiquette d'un lot en BLE."""
+    """Lance l'impression de l'étiquette d'un lot en BLE (fire-and-forget)."""
     mac = _get_printer_mac()
     if not mac:
         return JSONResponse(
@@ -40,7 +44,6 @@ async def print_lot_label(request: Request, lot_id: int):
             status_code=400,
         )
 
-    # Récupère les données du lot
     WARNING_DAYS, CRITICAL_DAYS = get_retention_thresholds()
     lots = list_lots()
     lot = next((l for l in lots if l["id"] == lot_id), None)
@@ -56,17 +59,14 @@ async def print_lot_label(request: Request, lot_id: int):
         from services.printer import print_lot
         print_lot(mac, lot)
         return JSONResponse({"ok": True, "message": "Impression lancée."})
-    except RuntimeError as e:
-        logger.error("Impression lot %s: %s", lot_id, e)
-        return JSONResponse({"ok": False, "error": "print_error", "message": str(e)}, status_code=500)
     except Exception as e:
-        logger.exception("Impression lot %s inattendue: %s", lot_id, e)
+        logger.exception("Impression lot %s: %s", lot_id, e)
         return JSONResponse({"ok": False, "error": "unexpected", "message": str(e)}, status_code=500)
 
 
 @router.post("/api/print/test")
 async def print_test_label(request: Request):
-    """Lance une impression de test pour vérifier la connexion BLE."""
+    """Lance une impression de test synchrone — retourne le vrai résultat BLE."""
     mac = _get_printer_mac()
     if not mac:
         return JSONResponse(
@@ -76,9 +76,13 @@ async def print_test_label(request: Request):
         )
 
     try:
-        from services.printer import print_test
-        print_test(mac)
-        return JSONResponse({"ok": True, "message": f"Impression test lancée vers {mac}."})
+        from services.printer import send_to_printer, _TEST_DATA
+        await asyncio.wait_for(send_to_printer(mac, _TEST_DATA), timeout=_BLE_TIMEOUT)
+        return JSONResponse({"ok": True, "message": f"Etiquette de test imprimée ({mac})."})
+    except asyncio.TimeoutError:
+        msg = f"Timeout ({_BLE_TIMEOUT}s) — imprimante non répondue. Vérifiez qu'elle est allumée et à portée."
+        logger.error("Impression test timeout: %s", mac)
+        return JSONResponse({"ok": False, "error": "timeout", "message": msg}, status_code=504)
     except RuntimeError as e:
         logger.error("Impression test: %s", e)
         return JSONResponse({"ok": False, "error": "print_error", "message": str(e)}, status_code=500)
