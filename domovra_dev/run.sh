@@ -5,13 +5,9 @@ set -euo pipefail
 # ─────────────── Diagnostic Bluetooth ───────────────
 echo "[Domovra] === Diagnostic Bluetooth ==="
 
-# Cherche le socket D-Bus sur tous les chemins possibles
+# Cherche le socket D-Bus
 DBUS_FOUND=""
-for path in \
-  /run/dbus/system_bus_socket \
-  /var/run/dbus/system_bus_socket \
-  /host/run/dbus/system_bus_socket \
-  /run/host/run/dbus/system_bus_socket; do
+for path in /run/dbus/system_bus_socket /var/run/dbus/system_bus_socket; do
   if [ -S "$path" ]; then
     echo "[Domovra] D-Bus socket trouvé: $path"
     export DBUS_SYSTEM_BUS_ADDRESS="unix:path=${path}"
@@ -19,14 +15,40 @@ for path in \
     break
   fi
 done
-[ -z "$DBUS_FOUND" ] && echo "[Domovra] Aucun socket D-Bus trouvé"
+[ -z "$DBUS_FOUND" ] && echo "[Domovra] Aucun socket D-Bus (RFCOMM sera utilisé)"
 
-# Contenu de /run et /var/run pour diagnostic
-echo "[Domovra] /run contient: $(ls /run 2>/dev/null | tr '\n' ' ')"
-echo "[Domovra] /var/run contient: $(ls /var/run 2>/dev/null | tr '\n' ' ')"
-
-# Interfaces réseau BT visibles
+# Interface HCI
 echo "[Domovra] Interfaces BT: $(ls /sys/class/bluetooth 2>/dev/null | tr '\n' ' ' || echo 'aucune')"
+
+# Tente de démarrer dbus+bluetoothd si hci0 visible mais pas de D-Bus
+if [ -z "$DBUS_FOUND" ] && [ -d "/sys/class/bluetooth/hci0" ]; then
+  echo "[Domovra] hci0 détecté — démarrage dbus + bluetoothd pour BLE"
+  mkdir -p /run/dbus
+  dbus-daemon --system --fork 2>/dev/null \
+    && echo "[Domovra] dbus-daemon OK" \
+    || echo "[Domovra] WARN: dbus-daemon indisponible"
+  sleep 0.5
+
+  # bluetoothd sur Alpine : /usr/lib/bluetooth/bluetoothd
+  BTDAEMON=""
+  for p in /usr/lib/bluetooth/bluetoothd /usr/libexec/bluetooth/bluetoothd; do
+    [ -x "$p" ] && BTDAEMON="$p" && break
+  done
+  command -v bluetoothd > /dev/null 2>&1 && BTDAEMON=bluetoothd
+
+  if [ -n "$BTDAEMON" ]; then
+    $BTDAEMON --noplugin=sap 2>&1 &
+    sleep 2
+    if [ -S "/run/dbus/system_bus_socket" ] && pgrep -x bluetoothd > /dev/null 2>&1; then
+      echo "[Domovra] bluetoothd OK — BLE disponible"
+      export DBUS_SYSTEM_BUS_ADDRESS="unix:path=/run/dbus/system_bus_socket"
+    else
+      echo "[Domovra] WARN: bluetoothd n'a pas démarré — RFCOMM uniquement"
+    fi
+  else
+    echo "[Domovra] WARN: bluetoothd introuvable — RFCOMM uniquement"
+  fi
+fi
 
 echo "[Domovra] === Fin diagnostic ==="
 
