@@ -2,6 +2,34 @@
 #!/usr/bin/with-contenv bash
 set -euo pipefail
 
+# ─────────────── Diagnostic Bluetooth ───────────────
+echo "[Domovra] === Diagnostic Bluetooth ==="
+
+# Cherche le socket D-Bus sur tous les chemins possibles
+DBUS_FOUND=""
+for path in \
+  /run/dbus/system_bus_socket \
+  /var/run/dbus/system_bus_socket \
+  /host/run/dbus/system_bus_socket \
+  /run/host/run/dbus/system_bus_socket; do
+  if [ -S "$path" ]; then
+    echo "[Domovra] D-Bus socket trouvé: $path"
+    export DBUS_SYSTEM_BUS_ADDRESS="unix:path=${path}"
+    DBUS_FOUND="$path"
+    break
+  fi
+done
+[ -z "$DBUS_FOUND" ] && echo "[Domovra] Aucun socket D-Bus trouvé"
+
+# Contenu de /run et /var/run pour diagnostic
+echo "[Domovra] /run contient: $(ls /run 2>/dev/null | tr '\n' ' ')"
+echo "[Domovra] /var/run contient: $(ls /var/run 2>/dev/null | tr '\n' ' ')"
+
+# Interfaces réseau BT visibles
+echo "[Domovra] Interfaces BT: $(ls /sys/class/bluetooth 2>/dev/null | tr '\n' ' ' || echo 'aucune')"
+
+echo "[Domovra] === Fin diagnostic ==="
+
 # ─────────────── Préparation app ───────────────
 mkdir -p /data
 export DB_PATH="/data/domovra.sqlite3"
