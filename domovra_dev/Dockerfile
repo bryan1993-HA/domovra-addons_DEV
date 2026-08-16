@@ -8,7 +8,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     VENV_PATH=/opt/venv \
     PATH=/opt/venv/bin:$PATH
 
-# Dépendances système : Pillow (étiquettes) + bluez pour socket RFCOMM noyau
+# Dépendances système : Pillow (étiquettes) + bluez pour BLE via bleak
 RUN apk add --no-cache \
     python3 py3-pip \
     bluez bluez-libs \
@@ -28,6 +28,7 @@ RUN python3 -m venv ${VENV_PATH} \
     "uvicorn[standard]>=0.27.0,<1.0.0" \
     "jinja2>=3.1.0,<4.0.0" \
     "python-multipart>=0.0.9,<1.0.0" \
+    "bleak>=0.21.0,<1.0.0" \
     "Pillow>=10.0.0,<12.0.0"
 
 COPY run.sh /run.sh

@@ -1,34 +1,31 @@
 # domovra/app/services/printer.py
 """
 Service d'impression d'étiquettes pour imprimantes Phomemo M110.
-Transport : Bluetooth classique RFCOMM (SPP profile, canal 1).
-Aucune dépendance bleak/D-Bus — socket AF_BLUETOOTH noyau uniquement.
+Transport : BLE GATT via bleak (accès au D-Bus BlueZ du host via host_network).
 
-Références :
+Références protocole :
   https://github.com/Tomaszu97/phomemo
   https://github.com/vivier/phomemo-tools
-  https://github.com/hkeward/phomemo_printer
 """
 from __future__ import annotations
 
 import asyncio
 import logging
-import socket
 import struct
 from io import BytesIO
 
 logger = logging.getLogger("domovra.printer")
 
 # Largeur M110 : 40 mm * 8 dots/mm = 320 px (203 DPI)
-PRINT_WIDTH  = 320
-BYTES_PER_ROW = PRINT_WIDTH // 8   # 40 octets
+PRINT_WIDTH   = 320
+BYTES_PER_ROW = PRINT_WIDTH // 8  # 40 octets
 
-# Canal RFCOMM SPP standard
-_RFCOMM_CHANNEL = 1
+# UUIDs BLE Phomemo M110
+_WRITE_UUID = "0000ae02-0000-1000-8000-00805f9b34fb"
 
 # Commandes protocole Phomemo ESC/POS
-_CMD_INIT      = bytes([0x1b, 0x40])       # ESC @ — initialise l'imprimante
-_CMD_PRINT_END = bytes([0x1b, 0x64, 0x02]) # ESC d 2 — avance papier
+_CMD_INIT      = bytes([0x1b, 0x40])        # ESC @ — initialise l'imprimante
+_CMD_PRINT_END = bytes([0x1b, 0x64, 0x02])  # ESC d 2 — avance papier
 
 # Données de l'étiquette de test
 _TEST_DATA: dict = {
@@ -46,9 +43,7 @@ _TEST_DATA: dict = {
 # ──────────────────────────── Image ────────────────────────────
 
 def build_label_image(data: dict) -> bytes:
-    """
-    Génère une image PNG de l'étiquette à partir des données d'un lot.
-    """
+    """Génère une image PNG de l'étiquette à partir des données d'un lot."""
     try:
         from PIL import Image, ImageDraw, ImageFont
     except ImportError:
@@ -116,16 +111,12 @@ def build_test_label_image() -> bytes:
 # ──────────────────────────── Protocole ────────────────────────────
 
 def _image_to_commands(png_bytes: bytes) -> bytes:
-    """
-    Convertit une image PNG en commandes raster Phomemo (GS v 0).
-    Chaque ligne = header 8 octets + BYTES_PER_ROW octets de données.
-    """
+    """Convertit une image PNG en commandes raster Phomemo (GS v 0)."""
     from PIL import Image
 
     img = Image.open(BytesIO(png_bytes)).convert("1")
     w, h = img.size
 
-    # Redimensionne si nécessaire
     if w != PRINT_WIDTH:
         img = img.resize((PRINT_WIDTH, int(h * PRINT_WIDTH / w)), Image.LANCZOS).convert("1")
         w, h = img.size
@@ -136,7 +127,7 @@ def _image_to_commands(png_bytes: bytes) -> bytes:
         for x in range(PRINT_WIDTH):
             if img.getpixel((x, y)) == 0:  # 0 = noir
                 row[x // 8] |= (0x80 >> (x % 8))
-        # GS v 0 0 — impression raster (1 ligne)
+        # GS v 0 — impression raster (1 ligne)
         buf += bytes([0x1d, 0x76, 0x30, 0x00])
         buf += struct.pack("<HH", BYTES_PER_ROW, 1)
         buf += row
@@ -144,41 +135,34 @@ def _image_to_commands(png_bytes: bytes) -> bytes:
     return bytes(buf)
 
 
-# ──────────────────────────── Transport RFCOMM ────────────────────────────
-
-def _send_via_rfcomm(mac: str, png_bytes: bytes, timeout: int = 15) -> None:
-    """
-    Envoie les données d'impression via socket Bluetooth classique RFCOMM.
-    Ne nécessite pas D-Bus ni bleak — uniquement le noyau Linux.
-    """
-    commands = _CMD_INIT + _image_to_commands(png_bytes) + _CMD_PRINT_END
-
-    logger.info("RFCOMM → %s canal %d (%d octets)", mac, _RFCOMM_CHANNEL, len(commands))
-
-    sock = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
-    sock.settimeout(timeout)
-    try:
-        sock.connect((mac, _RFCOMM_CHANNEL))
-        # Envoi par chunks de 512 octets
-        chunk_size = 512
-        for i in range(0, len(commands), chunk_size):
-            sock.sendall(commands[i:i + chunk_size])
-        logger.info("Impression envoyée avec succès à %s", mac)
-    finally:
-        try:
-            sock.close()
-        except Exception:
-            pass
-
+# ──────────────────────────── Transport BLE ────────────────────────────
 
 async def send_to_printer(mac: str, image_data: dict) -> None:
     """
-    Async wrapper : génère l'image et envoie via RFCOMM dans un thread executor.
-    Compatible avec asyncio.wait_for() pour le timeout côté endpoint.
+    Connexion BLE GATT via bleak + envoi des commandes d'impression.
+    Utilise le BlueZ du host (accessible via host_network: true dans config.json).
+    Lève une exception en cas d'erreur — à wrapper avec asyncio.wait_for().
     """
+    try:
+        from bleak import BleakClient
+    except ImportError:
+        raise RuntimeError("bleak non installé — impossible d'imprimer via BLE")
+
     png_bytes = build_label_image(image_data)
-    loop = asyncio.get_event_loop()
-    await loop.run_in_executor(None, _send_via_rfcomm, mac, png_bytes)
+    commands = _CMD_INIT + _image_to_commands(png_bytes) + _CMD_PRINT_END
+
+    logger.info("BLE → %s (%d octets)", mac, len(commands))
+
+    async with BleakClient(mac, timeout=10.0) as client:
+        if not client.is_connected:
+            raise RuntimeError(f"Connexion BLE échouée : {mac}")
+
+        chunk_size = 182
+        for i in range(0, len(commands), chunk_size):
+            await client.write_gatt_char(_WRITE_UUID, commands[i:i + chunk_size], response=False)
+            await asyncio.sleep(0.02)
+
+        logger.info("Impression envoyée avec succès à %s", mac)
 
 
 def print_lot(mac: str, lot_data: dict) -> None:
@@ -186,10 +170,12 @@ def print_lot(mac: str, lot_data: dict) -> None:
     import threading
 
     def _run():
+        loop = asyncio.new_event_loop()
         try:
-            png_bytes = build_label_image(lot_data)
-            _send_via_rfcomm(mac, png_bytes)
+            loop.run_until_complete(send_to_printer(mac, lot_data))
         except Exception as e:
             logger.error("Impression lot échouée: %s", e)
+        finally:
+            loop.close()
 
     threading.Thread(target=_run, daemon=True).start()
