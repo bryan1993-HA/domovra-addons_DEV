@@ -2,25 +2,6 @@
 #!/usr/bin/with-contenv bash
 set -euo pipefail
 
-# ─────────────── D-Bus BlueZ (via superviseur HAOS) ───────────────
-# bluetooth:true dans config.json → le superviseur HAOS monte le socket
-# D-Bus du host (qui a org.bluez) dans le container.
-# On attend qu'il soit disponible, sans démarrer notre propre dbus-daemon
-# (qui masquerait le socket du host).
-
-DBUS_SOCKET="/run/dbus/system_bus_socket"
-echo "[Domovra] Attente socket D-Bus superviseur..."
-for i in $(seq 1 15); do
-  if [ -S "$DBUS_SOCKET" ]; then
-    echo "[Domovra] Socket D-Bus trouvé (${i}s) — BlueZ host accessible"
-    break
-  fi
-  sleep 1
-done
-if [ ! -S "$DBUS_SOCKET" ]; then
-  echo "[Domovra] WARN: socket D-Bus absent après 15s — impression BLE désactivée"
-fi
-
 # ─────────────── Préparation app ───────────────
 mkdir -p /data
 export DB_PATH="/data/domovra.sqlite3"

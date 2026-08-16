@@ -1,9 +1,11 @@
 # domovra/app/services/printer.py
 """
 Service d'impression d'étiquettes pour imprimantes Phomemo M110.
-Transport : BLE GATT via bleak (accès au D-Bus BlueZ du host via host_network).
+Transport : Bluetooth classique RFCOMM (SPP profile, canal 1).
+Fonctionne via socket AF_BLUETOOTH noyau — pas de D-Bus, pas de bleak.
+Requiert host_network:true dans config.json (partage du namespace réseau).
 
-Références protocole :
+Références :
   https://github.com/Tomaszu97/phomemo
   https://github.com/vivier/phomemo-tools
 """
@@ -11,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import socket
 import struct
 from io import BytesIO
 
@@ -20,8 +23,8 @@ logger = logging.getLogger("domovra.printer")
 PRINT_WIDTH   = 320
 BYTES_PER_ROW = PRINT_WIDTH // 8  # 40 octets
 
-# UUIDs BLE Phomemo M110
-_WRITE_UUID = "0000ae02-0000-1000-8000-00805f9b34fb"
+# Canal RFCOMM SPP standard
+_RFCOMM_CHANNEL = 1
 
 # Commandes protocole Phomemo ESC/POS
 _CMD_INIT      = bytes([0x1b, 0x40])        # ESC @ — initialise l'imprimante
@@ -127,7 +130,6 @@ def _image_to_commands(png_bytes: bytes) -> bytes:
         for x in range(PRINT_WIDTH):
             if img.getpixel((x, y)) == 0:  # 0 = noir
                 row[x // 8] |= (0x80 >> (x % 8))
-        # GS v 0 — impression raster (1 ligne)
         buf += bytes([0x1d, 0x76, 0x30, 0x00])
         buf += struct.pack("<HH", BYTES_PER_ROW, 1)
         buf += row
@@ -135,34 +137,39 @@ def _image_to_commands(png_bytes: bytes) -> bytes:
     return bytes(buf)
 
 
-# ──────────────────────────── Transport BLE ────────────────────────────
+# ──────────────────────────── Transport RFCOMM ────────────────────────────
+
+def _send_via_rfcomm(mac: str, png_bytes: bytes, timeout: int = 15) -> None:
+    """
+    Envoie l'étiquette via socket Bluetooth RFCOMM (SPP, canal 1).
+    Pas de D-Bus. Requiert host_network:true (namespace réseau partagé).
+    """
+    commands = _CMD_INIT + _image_to_commands(png_bytes) + _CMD_PRINT_END
+    logger.info("RFCOMM → %s canal %d (%d octets)", mac, _RFCOMM_CHANNEL, len(commands))
+
+    sock = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
+    sock.settimeout(timeout)
+    try:
+        sock.connect((mac, _RFCOMM_CHANNEL))
+        chunk_size = 512
+        for i in range(0, len(commands), chunk_size):
+            sock.sendall(commands[i:i + chunk_size])
+        logger.info("Impression RFCOMM envoyée avec succès à %s", mac)
+    finally:
+        try:
+            sock.close()
+        except Exception:
+            pass
+
 
 async def send_to_printer(mac: str, image_data: dict) -> None:
     """
-    Connexion BLE GATT via bleak + envoi des commandes d'impression.
-    Utilise le BlueZ du host (accessible via host_network: true dans config.json).
-    Lève une exception en cas d'erreur — à wrapper avec asyncio.wait_for().
+    Async wrapper : génère l'image et envoie via RFCOMM dans un thread executor.
+    Compatible avec asyncio.wait_for() pour le timeout côté endpoint.
     """
-    try:
-        from bleak import BleakClient
-    except ImportError:
-        raise RuntimeError("bleak non installé — impossible d'imprimer via BLE")
-
     png_bytes = build_label_image(image_data)
-    commands = _CMD_INIT + _image_to_commands(png_bytes) + _CMD_PRINT_END
-
-    logger.info("BLE → %s (%d octets)", mac, len(commands))
-
-    async with BleakClient(mac, timeout=10.0) as client:
-        if not client.is_connected:
-            raise RuntimeError(f"Connexion BLE échouée : {mac}")
-
-        chunk_size = 182
-        for i in range(0, len(commands), chunk_size):
-            await client.write_gatt_char(_WRITE_UUID, commands[i:i + chunk_size], response=False)
-            await asyncio.sleep(0.02)
-
-        logger.info("Impression envoyée avec succès à %s", mac)
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, _send_via_rfcomm, mac, png_bytes)
 
 
 def print_lot(mac: str, lot_data: dict) -> None:
@@ -170,12 +177,10 @@ def print_lot(mac: str, lot_data: dict) -> None:
     import threading
 
     def _run():
-        loop = asyncio.new_event_loop()
         try:
-            loop.run_until_complete(send_to_printer(mac, lot_data))
+            png_bytes = build_label_image(lot_data)
+            _send_via_rfcomm(mac, png_bytes)
         except Exception as e:
             logger.error("Impression lot échouée: %s", e)
-        finally:
-            loop.close()
 
     threading.Thread(target=_run, daemon=True).start()
