@@ -56,9 +56,9 @@
       <button type="button" class="btn ghost" id="btn-preview-test" onclick="printerAction('preview')">
         👁 Prévisualiser
       </button>
-      <button type="button" class="btn ghost" id="btn-rawtest" onclick="printerAction('rawtext')"
-              title="Envoie du texte ASCII brut — diagnostic pour vérifier le canal RFCOMM">
-        🔧 Test texte brut
+      <button type="button" class="btn ghost" id="btn-discover" onclick="printerAction('discover')"
+              title="Découvre les services BLE GATT du M110 — nécessaire pour configurer l'impression BLE">
+        🔍 Découvrir BLE
       </button>
     </div>
   </div>
@@ -67,6 +67,11 @@
     <div class="label" style="margin-bottom:6px">Aperçu de l'étiquette :</div>
     <img id="preview-img" src="" alt="Aperçu étiquette"
          style="max-width:384px;border:1px solid var(--line);border-radius:8px;background:#fff">
+  </div>
+
+  <div id="discover-result" hidden style="margin-top:12px;background:var(--surface2,#1e1e2e);border-radius:8px;padding:12px">
+    <div class="label" style="margin-bottom:6px">Services BLE GATT trouvés :</div>
+    <pre id="discover-pre" style="font-size:11px;overflow-x:auto;margin:0;white-space:pre-wrap;word-break:break-all"></pre>
   </div>
 
   <div id="printer-status" style="margin-top:8px;font-size:13px"></div>
@@ -92,11 +97,11 @@
   window.printerAction = async function (action) {
     var btnPrint   = document.getElementById('btn-print-test');
     var btnPreview = document.getElementById('btn-preview-test');
-    var btnRaw     = document.getElementById('btn-rawtest');
+    var btnDiscover = document.getElementById('btn-discover');
 
-    if (action === 'print')    { if (btnPrint)   { btnPrint.disabled   = true; btnPrint.textContent   = '⏳ Envoi…'; } }
-    else if (action === 'preview') { if (btnPreview) { btnPreview.disabled = true; btnPreview.textContent = '⏳ Génération…'; } }
-    else if (action === 'rawtext') { if (btnRaw)    { btnRaw.disabled    = true; btnRaw.textContent    = '⏳ Envoi…'; } }
+    if (action === 'print')    { if (btnPrint)    { btnPrint.disabled    = true; btnPrint.textContent    = '⏳ Envoi…'; } }
+    if (action === 'preview')  { if (btnPreview)  { btnPreview.disabled  = true; btnPreview.textContent  = '⏳ Génération…'; } }
+    if (action === 'discover') { if (btnDiscover) { btnDiscover.disabled = true; btnDiscover.textContent = '⏳ Scan BLE…'; } }
     setStatus('', true);
 
     try {
@@ -115,14 +120,22 @@
         container.hidden = false;
         setStatus('Aperçu généré.', true);
 
-      } else if (action === 'rawtext') {
-        var r = await fetch(BASE + 'api/print/rawtest', { method: 'POST' });
+      } else if (action === 'discover') {
+        var r = await fetch(BASE + 'api/print/discover');
         var result = await safeJson(r);
+        var container = document.getElementById('discover-result');
+        var pre = document.getElementById('discover-pre');
         if (result.parsed) {
           var d = result.parsed;
-          setStatus((d.ok ? '✅ ' : '❌ ') + (d.message || ''), !!d.ok);
+          if (d.ok) {
+            pre.textContent = JSON.stringify(d, null, 2);
+            container.hidden = false;
+            setStatus('BLE GATT découvert — MTU=' + d.mtu + ', type addr=' + d.addr_type, true);
+          } else {
+            setStatus('Erreur BLE : ' + (d.error || d.message || 'inconnu'), false);
+          }
         } else {
-          setStatus('Erreur serveur : ' + result.raw.slice(0, 120), false);
+          setStatus('Erreur serveur : ' + result.raw.slice(0, 200), false);
         }
 
       } else {
@@ -140,9 +153,9 @@
     } catch (e) {
       setStatus('Erreur réseau : ' + e.message, false);
     } finally {
-      if (btnPrint)   { btnPrint.disabled   = false; btnPrint.textContent   = '🖨️ Imprimer une étiquette de test'; }
-      if (btnPreview) { btnPreview.disabled = false; btnPreview.textContent = '👁 Prévisualiser'; }
-      if (btnRaw)     { btnRaw.disabled     = false; btnRaw.textContent     = '🔧 Test texte brut'; }
+      if (btnPrint)    { btnPrint.disabled    = false; btnPrint.textContent    = '🖨️ Imprimer une étiquette de test'; }
+      if (btnPreview)  { btnPreview.disabled  = false; btnPreview.textContent  = '👁 Prévisualiser'; }
+      if (btnDiscover) { btnDiscover.disabled = false; btnDiscover.textContent = '🔍 Découvrir BLE'; }
     }
   };
 })();

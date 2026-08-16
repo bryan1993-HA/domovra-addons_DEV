@@ -1,6 +1,7 @@
 # domovra/app/routes/print_route.py
 """
-Routes d'impression d'étiquettes (Phomemo M110 via RFCOMM).
+Routes d'impression d'étiquettes (Phomemo M110).
+Transport : BLE GATT via L2CAP ATT brut (sans D-Bus).
 """
 from __future__ import annotations
 
@@ -77,25 +78,19 @@ async def print_test_label(request: Request):
 
 @router.post("/api/print/rawtest")
 async def print_raw_test(request: Request):
-    """
-    Envoie du texte ESC/POS brut pour tester si RFCOMM canal 1 peut imprimer.
-    Si du texte sort → RFCOMM fonctionne, c'est le protocole raster qui est faux.
-    Si rien → RFCOMM canal 1 ne sert pas à l'impression sur ce modèle.
-    """
+    """Diagnostic RFCOMM : envoie du texte ESC/POS brut via canal 1."""
     mac = _get_printer_mac()
     if not mac:
         return JSONResponse({"ok": False, "message": "Imprimante non configurée."}, status_code=400)
 
     import socket as _socket
-    import asyncio
 
     def _send():
-        # Test minimal : init + texte + feed
         payload = (
-            b"\x1b\x40"               # ESC @ — init
-            b"\x1b\x61\x01"           # ESC a 1 — centre
-            b"Test RFCOMM M110\n"     # texte ASCII
-            b"\x1b\x64\x05"           # ESC d 5 — avance 5 lignes
+            b"\x1b\x40"
+            b"\x1b\x61\x01"
+            b"Test RFCOMM M110\n"
+            b"\x1b\x64\x05"
         )
         sock = _socket.socket(_socket.AF_BLUETOOTH, _socket.SOCK_STREAM, _socket.BTPROTO_RFCOMM)
         sock.settimeout(10)
@@ -106,16 +101,39 @@ async def print_raw_test(request: Request):
         except Exception as exc:
             return str(exc)
         finally:
-            try:
-                sock.close()
-            except Exception:
-                pass
+            try: sock.close()
+            except Exception: pass
 
     loop = asyncio.get_event_loop()
     err = await loop.run_in_executor(None, _send)
     if err:
         return JSONResponse({"ok": False, "message": f"Erreur : {err}"}, status_code=500)
-    return JSONResponse({"ok": True, "message": "Texte test envoyé — vérifiez si quelque chose sort de l'imprimante."})
+    return JSONResponse({"ok": True, "message": "Texte test envoyé via RFCOMM (rien ne sort = normal sur M110)."})
+
+
+@router.get("/api/print/discover")
+async def discover_ble(request: Request):
+    """
+    Découverte BLE GATT du M110 via socket L2CAP ATT brut.
+    Retourne tous les services et caractéristiques trouvés.
+    """
+    mac = _get_printer_mac()
+    if not mac:
+        return JSONResponse({"ok": False, "message": "Imprimante non configurée."}, status_code=400)
+    try:
+        from services.printer import discover_ble_characteristics
+        loop = asyncio.get_event_loop()
+        result = await asyncio.wait_for(
+            loop.run_in_executor(None, discover_ble_characteristics, mac),
+            timeout=20,
+        )
+        return JSONResponse(result)
+    except asyncio.TimeoutError:
+        return JSONResponse({"ok": False, "error": "timeout",
+                             "message": "Timeout (20s) — imprimante BLE non trouvée."}, status_code=504)
+    except Exception as e:
+        logger.exception("Découverte BLE : %s", e)
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
 
 @router.get("/api/print/preview/lot/{lot_id}")
