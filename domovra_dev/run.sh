@@ -2,14 +2,6 @@
 #!/usr/bin/with-contenv bash
 set -euo pipefail
 
-# --------- D-Bus (requis pour bleak/BLE via BlueZ) ---------
-mkdir -p /run/dbus
-if ! pgrep -x dbus-daemon > /dev/null 2>&1; then
-  echo "[Domovra] Démarrage dbus-daemon..."
-  dbus-daemon --system --fork 2>/dev/null || echo "[Domovra] WARN: dbus-daemon non disponible (impression BLE désactivée)"
-  sleep 0.5
-fi
-
 # --------- Préparation ---------
 mkdir -p /data
 export DB_PATH="/data/domovra.sqlite3"
