@@ -56,9 +56,9 @@
       <button type="button" class="btn ghost" id="btn-preview-test" onclick="printerAction('preview')">
         👁 Prévisualiser
       </button>
-      <button type="button" class="btn ghost" id="btn-discover" onclick="printerAction('discover')"
-              title="Découvre les services BLE GATT du M110 — nécessaire pour configurer l'impression BLE">
-        🔍 Découvrir BLE
+      <button type="button" class="btn ghost" id="btn-diag" onclick="printerAction('diag')"
+              title="Diagnostic complet BLE : interfaces HCI, D-Bus, connexions L2CAP, commandes BT">
+        🩺 Diagnostic BLE
       </button>
     </div>
   </div>
@@ -69,9 +69,9 @@
          style="max-width:384px;border:1px solid var(--line);border-radius:8px;background:#fff">
   </div>
 
-  <div id="discover-result" hidden style="margin-top:12px;background:var(--surface2,#1e1e2e);border-radius:8px;padding:12px">
-    <div class="label" style="margin-bottom:6px">Services BLE GATT trouvés :</div>
-    <pre id="discover-pre" style="font-size:11px;overflow-x:auto;margin:0;white-space:pre-wrap;word-break:break-all"></pre>
+  <div id="diag-result" hidden style="margin-top:12px;background:var(--surface2,#1e1e2e);border-radius:8px;padding:12px">
+    <div class="label" style="margin-bottom:6px">Résultat diagnostic BLE :</div>
+    <pre id="diag-pre" style="font-size:11px;overflow-x:auto;margin:0;white-space:pre-wrap;word-break:break-all;max-height:400px;overflow-y:auto"></pre>
   </div>
 
   <div id="printer-status" style="margin-top:8px;font-size:13px"></div>
@@ -97,11 +97,11 @@
   window.printerAction = async function (action) {
     var btnPrint   = document.getElementById('btn-print-test');
     var btnPreview = document.getElementById('btn-preview-test');
-    var btnDiscover = document.getElementById('btn-discover');
+    var btnDiag    = document.getElementById('btn-diag');
 
-    if (action === 'print')    { if (btnPrint)    { btnPrint.disabled    = true; btnPrint.textContent    = '⏳ Envoi…'; } }
-    if (action === 'preview')  { if (btnPreview)  { btnPreview.disabled  = true; btnPreview.textContent  = '⏳ Génération…'; } }
-    if (action === 'discover') { if (btnDiscover) { btnDiscover.disabled = true; btnDiscover.textContent = '⏳ Scan BLE…'; } }
+    if (action === 'print')   { if (btnPrint)   { btnPrint.disabled   = true; btnPrint.textContent   = '⏳ Envoi…'; } }
+    if (action === 'preview') { if (btnPreview) { btnPreview.disabled = true; btnPreview.textContent = '⏳ Génération…'; } }
+    if (action === 'diag')    { if (btnDiag)    { btnDiag.disabled    = true; btnDiag.textContent    = '⏳ Diagnostic (~30s)…'; } }
     setStatus('', true);
 
     try {
@@ -114,28 +114,21 @@
           return;
         }
         var blob = await r.blob();
-        var img = document.getElementById('preview-img');
-        var container = document.getElementById('preview-container');
-        img.src = URL.createObjectURL(blob);
-        container.hidden = false;
+        document.getElementById('preview-img').src = URL.createObjectURL(blob);
+        document.getElementById('preview-container').hidden = false;
         setStatus('Aperçu généré.', true);
 
-      } else if (action === 'discover') {
-        var r = await fetch(BASE + 'api/print/discover');
+      } else if (action === 'diag') {
+        var r = await fetch(BASE + 'api/print/diag');
         var result = await safeJson(r);
-        var container = document.getElementById('discover-result');
-        var pre = document.getElementById('discover-pre');
+        var container = document.getElementById('diag-result');
+        var pre = document.getElementById('diag-pre');
+        pre.textContent = JSON.stringify(result.parsed || result.raw, null, 2);
+        container.hidden = false;
         if (result.parsed) {
-          var d = result.parsed;
-          if (d.ok) {
-            pre.textContent = JSON.stringify(d, null, 2);
-            container.hidden = false;
-            setStatus('BLE GATT découvert — MTU=' + d.mtu + ', type addr=' + d.addr_type, true);
-          } else {
-            setStatus('Erreur BLE : ' + (d.error || d.message || 'inconnu'), false);
-          }
+          setStatus('Diagnostic terminé — copiez le résultat et envoyez-le.', true);
         } else {
-          setStatus('Erreur serveur : ' + result.raw.slice(0, 200), false);
+          setStatus('Erreur serveur.', false);
         }
 
       } else {
@@ -153,9 +146,9 @@
     } catch (e) {
       setStatus('Erreur réseau : ' + e.message, false);
     } finally {
-      if (btnPrint)    { btnPrint.disabled    = false; btnPrint.textContent    = '🖨️ Imprimer une étiquette de test'; }
-      if (btnPreview)  { btnPreview.disabled  = false; btnPreview.textContent  = '👁 Prévisualiser'; }
-      if (btnDiscover) { btnDiscover.disabled = false; btnDiscover.textContent = '🔍 Découvrir BLE'; }
+      if (btnPrint)   { btnPrint.disabled   = false; btnPrint.textContent   = '🖨️ Imprimer une étiquette de test'; }
+      if (btnPreview) { btnPreview.disabled = false; btnPreview.textContent = '👁 Prévisualiser'; }
+      if (btnDiag)    { btnDiag.disabled    = false; btnDiag.textContent    = '🩺 Diagnostic BLE'; }
     }
   };
 })();
