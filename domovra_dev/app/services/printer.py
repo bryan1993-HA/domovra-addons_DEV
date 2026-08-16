@@ -2,10 +2,10 @@
 """
 Service d'impression d'étiquettes pour imprimantes Phomemo M110.
 
-Transport : BLE GATT via socket L2CAP ATT brut (sans D-Bus).
-  - host_network: true requis dans config.json
-  - Connexion BLE directe au kernel (pas via bluetoothd/D-Bus)
-  - L'imprimante doit être allumée et en mode BLE actif
+Transport : BLE GATT via bleak (D-Bus/BlueZ du host HAOS).
+  - /run/dbus/system_bus_socket disponible avec bluetooth: true + host_network: true
+  - DBUS_SYSTEM_BUS_ADDRESS configuré dynamiquement avant l'import bleak
+  - Fallback : raw L2CAP ATT (ble_random_full) via select() pour timeout propre
 
 Protocole raster : Tomaszu97 — 43 bytes/ligne, 240 lignes.
 """
@@ -16,6 +16,7 @@ import ctypes
 import ctypes.util
 import logging
 import os
+import select as _select
 import struct
 import subprocess
 import time
@@ -52,6 +53,13 @@ _TEST_DATA: dict = {
 }
 
 _WHITE_ROW = bytes(BYTES_PER_ROW)
+
+# UUIDs de caractéristiques d'écriture connus pour Phomemo M110 / M02
+_KNOWN_WRITE_UUIDS = [
+    "0000ff02-0000-1000-8000-00805f9b34fb",
+    "0000ae01-0000-1000-8000-00805f9b34fb",
+    "00008cf3-0000-1000-8000-00805f9b34fb",
+]
 
 
 # ── Image ────────────────────────────────────────────────────
@@ -141,35 +149,149 @@ def _build_payload(data: dict, ble: bool = False) -> bytes:
     return bytes(buf)
 
 
-# ── BLE GATT : helpers bas niveau ────────────────────────────
+# ── D-Bus / bleak ─────────────────────────────────────────────
+
+def _setup_dbus() -> str | None:
+    """
+    Configure DBUS_SYSTEM_BUS_ADDRESS si pas déjà défini.
+    Retourne le chemin du socket trouvé, ou None.
+    """
+    existing = os.environ.get("DBUS_SYSTEM_BUS_ADDRESS")
+    if existing:
+        return existing
+    import stat
+    for path in ["/run/dbus/system_bus_socket", "/var/run/dbus/system_bus_socket"]:
+        try:
+            if stat.S_ISSOCK(os.stat(path).st_mode):
+                addr = f"unix:path={path}"
+                os.environ["DBUS_SYSTEM_BUS_ADDRESS"] = addr
+                logger.info("D-Bus configuré : %s", addr)
+                return addr
+        except OSError:
+            pass
+    return None
+
+
+async def discover_via_bleak(mac: str, timeout: float = 20.0) -> dict:
+    """
+    Découverte GATT via bleak (D-Bus/BlueZ du host).
+    Retourne services + caractéristiques avec handles, UUIDs, propriétés.
+    """
+    dbus = _setup_dbus()
+    if not dbus:
+        return {"ok": False, "error": "Socket D-Bus introuvable (/run/dbus/system_bus_socket)"}
+
+    try:
+        from bleak import BleakClient
+        from bleak.exc import BleakError
+    except ImportError:
+        return {"ok": False, "error": "bleak non installé (pip install bleak)"}
+
+    try:
+        services_out = []
+        async with BleakClient(mac, timeout=timeout) as client:
+            for svc in client.services:
+                chars_out = []
+                for char in svc.characteristics:
+                    props = list(char.properties)
+                    chars_out.append({
+                        "handle": char.handle,
+                        "uuid": str(char.uuid),
+                        "properties": props,
+                        "writable": "write-without-response" in props or "write" in props,
+                    })
+                services_out.append({
+                    "uuid": str(svc.uuid),
+                    "handle": svc.handle,
+                    "characteristics": chars_out,
+                })
+        return {"ok": True, "method": "bleak", "mac": mac, "services": services_out}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+async def print_via_bleak(mac: str, payload: bytes, timeout: float = 30.0) -> dict:
+    """
+    Impression via bleak : trouve la première caractéristique Write Without Response
+    et envoie le payload en chunks de 20 bytes.
+    """
+    dbus = _setup_dbus()
+    if not dbus:
+        return {"ok": False, "error": "Socket D-Bus introuvable"}
+
+    try:
+        from bleak import BleakClient
+    except ImportError:
+        return {"ok": False, "error": "bleak non installé"}
+
+    try:
+        async with BleakClient(mac, timeout=timeout) as client:
+            write_char = None
+
+            # Cherche d'abord les UUIDs connus Phomemo
+            for svc in client.services:
+                for char in svc.characteristics:
+                    if str(char.uuid) in _KNOWN_WRITE_UUIDS:
+                        write_char = char
+                        break
+                if write_char:
+                    break
+
+            # Fallback : première caractéristique write-without-response
+            if not write_char:
+                for svc in client.services:
+                    for char in svc.characteristics:
+                        if "write-without-response" in char.properties:
+                            write_char = char
+                            break
+                    if write_char:
+                        break
+
+            if not write_char:
+                return {"ok": False,
+                        "error": "Aucune caractéristique d'écriture trouvée sur ce périphérique"}
+
+            logger.info("BLE print → char %s (handle 0x%04x), %d octets",
+                        write_char.uuid, write_char.handle, len(payload))
+
+            sent = 0
+            chunk = 20  # MTU BLE 4.0 par défaut — bleak gère les MTU plus grands automatiquement
+            for i in range(0, len(payload), chunk):
+                await client.write_gatt_char(write_char, payload[i:i + chunk], response=False)
+                sent += len(payload[i:i + chunk])
+                await asyncio.sleep(0.005)
+
+            return {"ok": True,
+                    "message": f"Impression envoyée : {sent} octets via {write_char.uuid}"}
+    except Exception as e:
+        logger.exception("print_via_bleak : %s", e)
+        return {"ok": False, "error": str(e)}
+
+
+# ── Fallback : raw L2CAP ATT (sans D-Bus) ────────────────────
 #
-# struct sockaddr_l2 (linux/bluetooth/l2cap.h) :
-#   __u16  l2_family      AF_BLUETOOTH = 31
-#   __le16 l2_psm         0 pour ATT fixed channel
-#   bdaddr_t l2_bdaddr    6 octets, ordre inversé
-#   __le16 l2_cid         4 = ATT fixed channel BLE
-#   __u8   l2_bdaddr_type 1=LE_PUBLIC  2=LE_RANDOM
-#   __u8   <padding>      alignement struct à 2 octets
+# Utilisé si bleak échoue.
+# Combinaison gagnante du diagnostic : LE_RANDOM + bind + BT_SECURITY_LOW
+# (ble_random_full → EINPROGRESS = connexion en cours, timeout 5s trop court)
+#
+# struct sockaddr_l2 :
+#   __u16  l2_family  __le16 l2_psm  bdaddr_t l2_bdaddr(6)  __le16 l2_cid  __u8 l2_bdaddr_type  __u8 pad
 
-_AF_BLUETOOTH  = 31
-_BTPROTO_L2CAP = 0
-_ATT_CID       = 4
-_LE_PUBLIC     = 1
-_LE_RANDOM     = 2
+_AF_BLUETOOTH = 31
+_ATT_CID      = 4
+_LE_PUBLIC    = 1
+_LE_RANDOM    = 2
+_SOL_BLUETOOTH   = 274
+_BT_SECURITY     = 4
+_BT_SECURITY_LOW = 1
 
-_SOL_BLUETOOTH      = 274
-_BT_SECURITY        = 4
-_BT_SECURITY_LOW    = 1
-_BT_CHANNEL_POLICY  = 10
-_BT_CHANNEL_POLICY_LE_PREFERRED = 2
-
-_ATT_ERROR_RSP        = 0x01
 _ATT_EXCHANGE_MTU_REQ = 0x02
 _ATT_EXCHANGE_MTU_RSP = 0x03
 _ATT_READ_BY_GRP_REQ  = 0x10
 _ATT_READ_BY_GRP_RSP  = 0x11
 _ATT_READ_BY_TYPE_REQ = 0x08
 _ATT_READ_BY_TYPE_RSP = 0x09
+_ATT_ERROR_RSP        = 0x01
 _ATT_WRITE_CMD        = 0x52
 
 
@@ -212,24 +334,14 @@ def _make_l2_addr(mac: str, cid: int, addr_type: int) -> _SockaddrL2:
         addr.l2_bdaddr[i] = b
     addr.l2_cid = cid
     addr.l2_bdaddr_type = addr_type
-    addr._pad = 0
     return addr
 
 
-def _set_connect_timeout(s: socket.socket, seconds: int) -> None:
-    """SO_SNDTIMEO : timeout pour connect() bloquant."""
-    timeval = struct.pack("ll", seconds, 0)
-    try:
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_SNDTIMEO, timeval)
-    except OSError:
-        pass
-
-
-def _ble_connect(mac: str, addr_type: int, timeout: int = 10) -> socket.socket:
+def _ble_connect_raw(mac: str, timeout: float = 25.0) -> socket.socket:
     """
-    Ouvre une connexion BLE L2CAP ATT vers le M110.
-    L'imprimante doit être allumée et en mode BLE actif.
-    Lève OSError si connexion impossible dans le délai.
+    Connexion BLE L2CAP ATT via raw socket.
+    Combinaison : LE_RANDOM + bind + BT_SECURITY_LOW.
+    Utilise select() pour un timeout propre sur le connect() non-bloquant.
     """
     libc = _get_libc()
     libc.connect.restype = ctypes.c_int
@@ -237,38 +349,58 @@ def _ble_connect(mac: str, addr_type: int, timeout: int = 10) -> socket.socket:
 
     s = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_SEQPACKET, socket.BTPROTO_L2CAP)
     try:
-        # SO_SNDTIMEO : timeout bloquant pour connect()
-        _set_connect_timeout(s, timeout)
-
-        # BT_SECURITY LOW (requis sur certains kernels avant connect)
+        # BT_SECURITY LOW
         try:
             s.setsockopt(_SOL_BLUETOOTH, _BT_SECURITY,
                          struct.pack("BB", _BT_SECURITY_LOW, 0))
         except OSError:
             pass
 
-        # Bind local (any adapter, ATT CID, LE_PUBLIC)
+        # Bind local
         local = _make_l2_addr("00:00:00:00:00:00", _ATT_CID, _LE_PUBLIC)
         try:
             libc.bind(s.fileno(), ctypes.byref(local), ctypes.sizeof(local))
         except OSError:
             pass
 
-        # Connexion distante
-        remote = _make_l2_addr(mac, _ATT_CID, addr_type)
+        # Non-bloquant pour le connect() + select()
+        s.setblocking(False)
+        remote = _make_l2_addr(mac, _ATT_CID, _LE_RANDOM)
         ret = libc.connect(s.fileno(), ctypes.byref(remote), ctypes.sizeof(remote))
-        if ret < 0:
-            err = ctypes.get_errno()
+        err = ctypes.get_errno()
+
+        if ret == 0:
+            pass  # connexion immédiate
+        elif err in (115, 36):  # EINPROGRESS / EAGAIN
+            # Attend la connexion via select()
+            _, writable, _ = _select.select([], [s], [], timeout)
+            if not writable:
+                raise TimeoutError(f"BLE connect timeout ({timeout}s) — imprimante allumée ?")
+            # Vérifie le résultat final
+            sock_err = s.getsockopt(socket.SOL_SOCKET, socket.SO_ERROR)
+            if sock_err != 0:
+                raise OSError(sock_err, os.strerror(sock_err))
+        else:
             raise OSError(err, os.strerror(err))
 
-        # Restaure un timeout de lecture/écriture classique
-        s.settimeout(float(timeout))
-        logger.info("BLE ATT connecté à %s (addr_type=%d)", mac, addr_type)
+        s.setblocking(True)
+        s.settimeout(timeout)
+        logger.info("BLE raw ATT connecté à %s (LE_RANDOM)", mac)
         return s
+
     except Exception:
         try: s.close()
         except Exception: pass
         raise
+
+
+def _uuid_str(raw: bytes) -> str:
+    if len(raw) == 2:
+        return f"0x{struct.unpack_from('<H', raw)[0]:04x}"
+    if len(raw) == 16:
+        h = raw[::-1].hex()
+        return f"{h[:8]}-{h[8:12]}-{h[12:16]}-{h[16:20]}-{h[20:]}"
+    return raw.hex()
 
 
 def _att_exchange_mtu(sock: socket.socket, wanted: int = 512) -> int:
@@ -282,16 +414,87 @@ def _att_exchange_mtu(sock: socket.socket, wanted: int = 512) -> int:
     return 23
 
 
-def _uuid_str(raw: bytes) -> str:
-    if len(raw) == 2:
-        return f"0x{struct.unpack_from('<H', raw)[0]:04x}"
-    if len(raw) == 16:
-        h = raw[::-1].hex()
-        return f"{h[:8]}-{h[8:12]}-{h[12:16]}-{h[16:20]}-{h[20:]}"
-    return raw.hex()
+def discover_raw_ble(mac: str, timeout: float = 25.0) -> dict:
+    """Découverte GATT via raw L2CAP ATT (fallback si bleak indisponible)."""
+    try:
+        sock = _ble_connect_raw(mac, timeout)
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+    try:
+        mtu = _att_exchange_mtu(sock)
+        services = []
+        h = 0x0001
+        while h <= 0xFFFF:
+            pkt = struct.pack("<BHHH", _ATT_READ_BY_GRP_REQ, h, 0xFFFF, 0x2800)
+            sock.send(pkt)
+            rsp = sock.recv(512)
+            if not rsp or rsp[0] == _ATT_ERROR_RSP:
+                break
+            if rsp[0] != _ATT_READ_BY_GRP_RSP:
+                break
+            item_len = rsp[1]; data = rsp[2:]; done = False
+            while len(data) >= item_len:
+                item = data[:item_len]
+                sh, eh = struct.unpack_from("<HH", item)
+                svc = {"start": f"0x{sh:04x}", "end": f"0x{eh:04x}",
+                       "uuid": _uuid_str(item[4:item_len]), "characteristics": []}
+                services.append(svc)
+                data = data[item_len:]; h = eh + 1
+                if eh == 0xFFFF: done = True
+            if done: break
+
+        for svc in services:
+            sh = int(svc["start"], 16); eh = int(svc["end"], 16); ch = sh
+            while ch <= eh:
+                cpkt = struct.pack("<BHHH", _ATT_READ_BY_TYPE_REQ, ch, eh, 0x2803)
+                sock.send(cpkt); crsp = sock.recv(512)
+                if not crsp or crsp[0] == _ATT_ERROR_RSP: break
+                if crsp[0] != _ATT_READ_BY_TYPE_RSP: break
+                clen = crsp[1]; cdata = crsp[2:]
+                while len(cdata) >= clen:
+                    ci = cdata[:clen]
+                    decl_h = struct.unpack_from("<H", ci)[0]
+                    props = ci[2]; val_h = struct.unpack_from("<H", ci, 3)[0]
+                    cuuid = _uuid_str(ci[5:clen])
+                    labels = ([("Read" if props & 0x02 else "")] +
+                              [("WriteNoResp" if props & 0x04 else "")] +
+                              [("Write" if props & 0x08 else "")] +
+                              [("Notify" if props & 0x10 else "")])
+                    svc["characteristics"].append({
+                        "decl_handle": f"0x{decl_h:04x}",
+                        "value_handle": f"0x{val_h:04x}",
+                        "props": f"0x{props:02x}",
+                        "props_labels": [l for l in labels if l],
+                        "uuid": cuuid,
+                        "writable": bool(props & 0x0C),
+                    })
+                    cdata = cdata[clen:]; ch = val_h + 1
+                else: break
+        return {"ok": True, "method": "raw_l2cap", "mtu": mtu, "services": services}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+    finally:
+        try: sock.close()
+        except Exception: pass
 
 
-# ── Diagnostic complet ────────────────────────────────────────
+def send_raw_ble_gatt(mac: str, payload: bytes, timeout: float = 30.0) -> None:
+    """Impression via raw L2CAP ATT (fallback bleak)."""
+    sock = _ble_connect_raw(mac, timeout)
+    try:
+        mtu = _att_exchange_mtu(sock)
+        chunk = max(1, mtu - 3)
+        for i in range(0, len(payload), chunk):
+            pkt = struct.pack("<BH", _ATT_WRITE_CMD, 0x0002) + payload[i:i + chunk]
+            sock.send(pkt)
+            time.sleep(0.005)
+    finally:
+        try: sock.close()
+        except Exception: pass
+
+
+# ── Diagnostic ────────────────────────────────────────────────
 
 def _run_cmd(cmd: list[str], timeout: int = 5) -> dict:
     try:
@@ -306,261 +509,35 @@ def _run_cmd(cmd: list[str], timeout: int = 5) -> dict:
         return {"ok": False, "error": str(e)}
 
 
-def _find_sockets(paths: list[str]) -> list[str]:
-    import stat
-    found = []
-    for base in paths:
-        try:
-            for root, _dirs, files in os.walk(base):
-                for fn in files:
-                    full = os.path.join(root, fn)
-                    try:
-                        if stat.S_ISSOCK(os.stat(full).st_mode):
-                            found.append(full)
-                    except OSError:
-                        pass
-        except OSError:
-            pass
-    return found
-
-
 def diagnose_ble(mac: str) -> dict:
-    """
-    Diagnostic BLE complet. Chaque connect L2CAP est limité à 5s (SO_SNDTIMEO).
-    L'imprimante DOIT être allumée et active pendant ce test.
-    """
-    results: dict = {"mac": mac, "note": "Imprimante doit etre allumee pendant ce test", "tests": {}}
+    """Diagnostic BLE rapide (sans tests de connexion bloquants)."""
+    results: dict = {"mac": mac, "tests": {}}
     t = results["tests"]
 
-    # 1. Interfaces HCI
+    dbus = _setup_dbus()
+    t["dbus_configured"] = dbus
+
     try:
         t["hci_devices"] = os.listdir("/sys/class/bluetooth")
     except OSError as e:
         t["hci_devices"] = str(e)
 
-    # 2. Sockets D-Bus / Unix
-    t["dbus_sockets"] = _find_sockets(["/run", "/var/run", "/tmp"])
+    t["bluetoothctl_devices"] = _run_cmd(
+        ["bluetoothctl", "--", "devices"], timeout=5)
+    t["bluetoothctl_show"] = _run_cmd(
+        ["bluetoothctl", "--", "show"], timeout=5)
 
-    # 3. Commandes BT
-    for cmd_name in ["bluetoothctl", "hciconfig", "hcitool", "gatttool", "btmgmt"]:
-        t[f"cmd_{cmd_name}"] = _run_cmd(["which", cmd_name])
-
-    # 4. hciconfig
-    t["hciconfig"] = _run_cmd(["hciconfig", "-a"], timeout=5)
-
-    # 5. btmgmt info
-    t["btmgmt_info"] = _run_cmd(["btmgmt", "info"], timeout=5)
-
-    # 6. Création socket L2CAP
+    # Test bleak import
     try:
-        s = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_SEQPACKET, socket.BTPROTO_L2CAP)
-        s.close()
-        t["l2cap_socket_create"] = {"ok": True}
-    except OSError as e:
-        t["l2cap_socket_create"] = {"ok": False, "errno": e.errno, "msg": str(e)}
-
-    # 7. Connexions L2CAP ATT : variantes (5s timeout chacune)
-    libc = _get_libc()
-    libc.connect.restype = ctypes.c_int
-    libc.bind.restype    = ctypes.c_int
-    CONN_TIMEOUT = 5
-
-    def _try(label: str, addr_type: int, do_bind: bool, do_security: bool):
-        s = None
-        try:
-            s = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_SEQPACKET,
-                              socket.BTPROTO_L2CAP)
-            _set_connect_timeout(s, CONN_TIMEOUT)
-
-            if do_security:
-                try:
-                    s.setsockopt(_SOL_BLUETOOTH, _BT_SECURITY,
-                                 struct.pack("BB", _BT_SECURITY_LOW, 0))
-                except OSError as e:
-                    t[label + "_setsockopt"] = {"errno": e.errno, "msg": str(e)}
-
-            if do_bind:
-                local = _make_l2_addr("00:00:00:00:00:00", _ATT_CID, _LE_PUBLIC)
-                try:
-                    libc.bind(s.fileno(), ctypes.byref(local), ctypes.sizeof(local))
-                except OSError as e:
-                    t[label + "_bind"] = {"errno": e.errno, "msg": str(e)}
-
-            remote = _make_l2_addr(mac, _ATT_CID, addr_type)
-            ret = libc.connect(s.fileno(), ctypes.byref(remote), ctypes.sizeof(remote))
-            if ret < 0:
-                err = ctypes.get_errno()
-                t[label] = {"ok": False, "errno": err, "msg": os.strerror(err)}
-            else:
-                t[label] = {"ok": True, "msg": "CONNEXION BLE ATT REUSSIE"}
-        except OSError as e:
-            t[label] = {"ok": False, "errno": e.errno, "msg": str(e)}
-        except Exception as e:
-            t[label] = {"ok": False, "msg": str(e)}
-        finally:
-            if s:
-                try: s.close()
-                except Exception: pass
-
-    _try("ble_public_no_bind",  _LE_PUBLIC, False, False)
-    _try("ble_public_bind",     _LE_PUBLIC, True,  False)
-    _try("ble_public_full",     _LE_PUBLIC, True,  True)
-    _try("ble_random_no_bind",  _LE_RANDOM, False, False)
-    _try("ble_random_bind",     _LE_RANDOM, True,  False)
-    _try("ble_random_full",     _LE_RANDOM, True,  True)
-
-    # 8. RFCOMM canaux 2-5 (3s timeout)
-    rfcomm = {}
-    for ch in [2, 3, 4, 5]:
-        try:
-            s = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
-            s.settimeout(3)
-            s.connect((mac, ch))
-            rfcomm[ch] = "connecte"
-            s.close()
-        except OSError as e:
-            rfcomm[ch] = f"errno={e.errno} {e.strerror}"
-        except Exception as e:
-            rfcomm[ch] = str(e)
-    t["rfcomm_channels_2_5"] = rfcomm
+        import bleak  # noqa: F401
+        t["bleak_available"] = True
+    except ImportError:
+        t["bleak_available"] = False
 
     return results
 
 
-# ── Découverte GATT ───────────────────────────────────────────
-
-def discover_ble_characteristics(mac: str, timeout: int = 15) -> dict:
-    """Connexion BLE ATT + découverte GATT complète. Imprimante doit être allumée."""
-    sock = None
-    connected_type = -1
-
-    for addr_type in (_LE_PUBLIC, _LE_RANDOM):
-        try:
-            sock = _ble_connect(mac, addr_type, timeout=timeout)
-            connected_type = addr_type
-            break
-        except OSError as e:
-            logger.debug("discover addr_type=%d : %s", addr_type, e)
-
-    if sock is None:
-        return {"ok": False,
-                "error": "Connexion BLE impossible — imprimante allumée ? Réessayer après avoir appuyé sur le bouton de l'imprimante."}
-
-    try:
-        mtu = _att_exchange_mtu(sock)
-        services = []
-
-        h = 0x0001
-        while h <= 0xFFFF:
-            pkt = struct.pack("<BHHH", _ATT_READ_BY_GRP_REQ, h, 0xFFFF, 0x2800)
-            sock.send(pkt)
-            rsp = sock.recv(512)
-            if not rsp or rsp[0] == _ATT_ERROR_RSP:
-                break
-            if rsp[0] != _ATT_READ_BY_GRP_RSP:
-                break
-            item_len = rsp[1]
-            data = rsp[2:]
-            done = False
-            while len(data) >= item_len:
-                item = data[:item_len]
-                sh, eh = struct.unpack_from("<HH", item)
-                svc = {"start": f"0x{sh:04x}", "end": f"0x{eh:04x}",
-                       "uuid": _uuid_str(item[4:item_len]), "characteristics": []}
-                services.append(svc)
-                data = data[item_len:]
-                h = eh + 1
-                if eh == 0xFFFF:
-                    done = True
-            if done:
-                break
-
-        for svc in services:
-            sh = int(svc["start"], 16)
-            eh = int(svc["end"], 16)
-            ch = sh
-            while ch <= eh:
-                cpkt = struct.pack("<BHHH", _ATT_READ_BY_TYPE_REQ, ch, eh, 0x2803)
-                sock.send(cpkt)
-                crsp = sock.recv(512)
-                if not crsp or crsp[0] == _ATT_ERROR_RSP:
-                    break
-                if crsp[0] != _ATT_READ_BY_TYPE_RSP:
-                    break
-                clen = crsp[1]
-                cdata = crsp[2:]
-                while len(cdata) >= clen:
-                    ci = cdata[:clen]
-                    decl_h = struct.unpack_from("<H", ci)[0]
-                    props = ci[2]
-                    val_h = struct.unpack_from("<H", ci, 3)[0]
-                    cuuid = _uuid_str(ci[5:clen])
-                    labels = []
-                    if props & 0x02: labels.append("Read")
-                    if props & 0x04: labels.append("WriteNoResp")
-                    if props & 0x08: labels.append("Write")
-                    if props & 0x10: labels.append("Notify")
-                    if props & 0x20: labels.append("Indicate")
-                    svc["characteristics"].append({
-                        "decl_handle": f"0x{decl_h:04x}",
-                        "value_handle": f"0x{val_h:04x}",
-                        "props": f"0x{props:02x}",
-                        "props_labels": labels,
-                        "uuid": cuuid,
-                        "writable": bool(props & 0x0C),
-                    })
-                    cdata = cdata[clen:]
-                    ch = val_h + 1
-                else:
-                    break
-
-        return {
-            "ok": True,
-            "mtu": mtu,
-            "addr_type": "public" if connected_type == _LE_PUBLIC else "random",
-            "services": services,
-        }
-
-    except Exception as e:
-        logger.exception("Découverte GATT : %s", e)
-        return {"ok": False, "error": str(e)}
-    finally:
-        try: sock.close()
-        except Exception: pass
-
-
-# ── Impression BLE GATT ───────────────────────────────────────
-
-def send_ble_gatt(mac: str, payload: bytes, handle: int, timeout: int = 20) -> None:
-    """Envoi payload vers M110 via BLE GATT Write Without Response."""
-    for addr_type in (_LE_PUBLIC, _LE_RANDOM):
-        try:
-            sock = _ble_connect(mac, addr_type, timeout=timeout)
-            break
-        except OSError:
-            pass
-    else:
-        raise OSError("Connexion BLE GATT impossible")
-
-    try:
-        mtu = _att_exchange_mtu(sock)
-        chunk = max(1, mtu - 3)
-        for i in range(0, len(payload), chunk):
-            pkt = struct.pack("<BH", _ATT_WRITE_CMD, handle) + payload[i:i + chunk]
-            sock.send(pkt)
-            time.sleep(0.005)
-    finally:
-        try: sock.close()
-        except Exception: pass
-
-
-async def send_to_printer_ble(mac: str, image_data: dict, handle: int) -> None:
-    payload = _build_payload(image_data, ble=True)
-    loop = asyncio.get_event_loop()
-    await loop.run_in_executor(None, send_ble_gatt, mac, payload, handle)
-
-
-# ── Transport RFCOMM (secours — ne fonctionne pas sur M110) ──
+# ── Transport RFCOMM (secours) ────────────────────────────────
 
 def _send_rfcomm(mac: str, payload: bytes, timeout: int = 15) -> None:
     sock = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)

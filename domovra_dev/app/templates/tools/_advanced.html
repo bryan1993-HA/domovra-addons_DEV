@@ -57,8 +57,12 @@
         👁 Prévisualiser
       </button>
       <button type="button" class="btn ghost" id="btn-diag" onclick="printerAction('diag')"
-              title="Diagnostic complet BLE : interfaces HCI, D-Bus, connexions L2CAP, commandes BT">
-        🩺 Diagnostic BLE
+              title="Diagnostic rapide : D-Bus, bluetoothctl, bleak">
+        🩺 Diag
+      </button>
+      <button type="button" class="btn ghost" id="btn-discover" onclick="printerAction('discover')"
+              title="Découverte GATT — imprimante doit être allumée">
+        🔍 Découvrir
       </button>
     </div>
   </div>
@@ -70,8 +74,8 @@
   </div>
 
   <div id="diag-result" hidden style="margin-top:12px;background:var(--surface2,#1e1e2e);border-radius:8px;padding:12px">
-    <div class="label" style="margin-bottom:6px">Résultat diagnostic BLE :</div>
-    <pre id="diag-pre" style="font-size:11px;overflow-x:auto;margin:0;white-space:pre-wrap;word-break:break-all;max-height:400px;overflow-y:auto"></pre>
+    <div class="label" style="margin-bottom:6px" id="diag-label">Résultat :</div>
+    <pre id="diag-pre" style="font-size:11px;overflow-x:auto;margin:0;white-space:pre-wrap;word-break:break-all;max-height:500px;overflow-y:auto"></pre>
   </div>
 
   <div id="printer-status" style="margin-top:8px;font-size:13px"></div>
@@ -94,14 +98,22 @@
     catch (_) { return { parsed: null, raw: text }; }
   }
 
-  window.printerAction = async function (action) {
-    var btnPrint   = document.getElementById('btn-print-test');
-    var btnPreview = document.getElementById('btn-preview-test');
-    var btnDiag    = document.getElementById('btn-diag');
+  function showJson(label, data) {
+    document.getElementById('diag-label').textContent = label;
+    document.getElementById('diag-pre').textContent = JSON.stringify(data, null, 2);
+    document.getElementById('diag-result').hidden = false;
+  }
 
-    if (action === 'print')   { if (btnPrint)   { btnPrint.disabled   = true; btnPrint.textContent   = '⏳ Envoi…'; } }
-    if (action === 'preview') { if (btnPreview) { btnPreview.disabled = true; btnPreview.textContent = '⏳ Génération…'; } }
-    if (action === 'diag')    { if (btnDiag)    { btnDiag.disabled    = true; btnDiag.textContent    = '⏳ Diagnostic (~30s)…'; } }
+  window.printerAction = async function (action) {
+    var btnPrint    = document.getElementById('btn-print-test');
+    var btnPreview  = document.getElementById('btn-preview-test');
+    var btnDiag     = document.getElementById('btn-diag');
+    var btnDiscover = document.getElementById('btn-discover');
+
+    if (action === 'print')    { if (btnPrint)    { btnPrint.disabled    = true; btnPrint.textContent    = '⏳ Impression…'; } }
+    if (action === 'preview')  { if (btnPreview)  { btnPreview.disabled  = true; btnPreview.textContent  = '⏳ Génération…'; } }
+    if (action === 'diag')     { if (btnDiag)     { btnDiag.disabled     = true; btnDiag.textContent     = '⏳ Diag…'; } }
+    if (action === 'discover') { if (btnDiscover) { btnDiscover.disabled = true; btnDiscover.textContent = '⏳ Scan (~20s)…'; } }
     setStatus('', true);
 
     try {
@@ -109,26 +121,28 @@
         var r = await fetch(BASE + 'api/print/preview/test');
         if (!r.ok) {
           var err = await safeJson(r);
-          var msg = (err.parsed && (err.parsed.message || err.parsed.error)) || err.raw || ('Erreur ' + r.status);
-          setStatus('Erreur : ' + msg, false);
+          setStatus('Erreur : ' + ((err.parsed && (err.parsed.message || err.parsed.error)) || err.raw), false);
           return;
         }
-        var blob = await r.blob();
-        document.getElementById('preview-img').src = URL.createObjectURL(blob);
+        document.getElementById('preview-img').src = URL.createObjectURL(await r.blob());
         document.getElementById('preview-container').hidden = false;
         setStatus('Aperçu généré.', true);
 
       } else if (action === 'diag') {
         var r = await fetch(BASE + 'api/print/diag');
         var result = await safeJson(r);
-        var container = document.getElementById('diag-result');
-        var pre = document.getElementById('diag-pre');
-        pre.textContent = JSON.stringify(result.parsed || result.raw, null, 2);
-        container.hidden = false;
-        if (result.parsed) {
-          setStatus('Diagnostic terminé — copiez le résultat et envoyez-le.', true);
+        showJson('Diagnostic BLE :', result.parsed || result.raw);
+        setStatus('Diagnostic terminé.', true);
+
+      } else if (action === 'discover') {
+        var r = await fetch(BASE + 'api/print/discover');
+        var result = await safeJson(r);
+        var d = result.parsed;
+        showJson('Caractéristiques GATT :', d || result.raw);
+        if (d && d.ok) {
+          setStatus('GATT découvert via ' + (d.method || '?') + ' — ' + (d.services || []).length + ' service(s)', true);
         } else {
-          setStatus('Erreur serveur.', false);
+          setStatus('Erreur : ' + (d && (d.error || d.message) || 'inconnu'), false);
         }
 
       } else {
@@ -136,8 +150,8 @@
         var result = await safeJson(r);
         if (result.parsed) {
           var d = result.parsed;
-          setStatus((d.ok ? '✅ ' : '❌ ') + (d.message || (d.ok ? 'Impression lancée !' : 'Erreur')), !!d.ok);
-          window.showToast && window.showToast(d.message || (d.ok ? 'Impression lancée !' : 'Erreur'), d.ok ? 'ok' : 'error');
+          setStatus((d.ok ? '✅ ' : '❌ ') + (d.message || d.error || (d.ok ? 'Impression lancée !' : 'Erreur')), !!d.ok);
+          window.showToast && window.showToast(d.message || (d.ok ? 'OK' : 'Erreur'), d.ok ? 'ok' : 'error');
         } else {
           setStatus('Erreur serveur : ' + result.raw.slice(0, 120), false);
           window.showToast && window.showToast('Erreur serveur', 'error');
@@ -146,9 +160,10 @@
     } catch (e) {
       setStatus('Erreur réseau : ' + e.message, false);
     } finally {
-      if (btnPrint)   { btnPrint.disabled   = false; btnPrint.textContent   = '🖨️ Imprimer une étiquette de test'; }
-      if (btnPreview) { btnPreview.disabled = false; btnPreview.textContent = '👁 Prévisualiser'; }
-      if (btnDiag)    { btnDiag.disabled    = false; btnDiag.textContent    = '🩺 Diagnostic BLE'; }
+      if (btnPrint)    { btnPrint.disabled    = false; btnPrint.textContent    = '🖨️ Imprimer une étiquette de test'; }
+      if (btnPreview)  { btnPreview.disabled  = false; btnPreview.textContent  = '👁 Prévisualiser'; }
+      if (btnDiag)     { btnDiag.disabled     = false; btnDiag.textContent     = '🩺 Diag'; }
+      if (btnDiscover) { btnDiscover.disabled = false; btnDiscover.textContent = '🔍 Découvrir'; }
     }
   };
 })();
