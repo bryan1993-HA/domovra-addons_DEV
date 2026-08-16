@@ -1,12 +1,11 @@
 # domovra/app/routes/print_route.py
 """
-Routes d'impression d'étiquettes BLE (Phomemo M110 et compatibles).
+Routes d'impression d'étiquettes (Phomemo M110 via RFCOMM).
 """
 from __future__ import annotations
 
 import asyncio
 import logging
-from io import BytesIO
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
@@ -19,13 +18,10 @@ from db import status_for
 logger = logging.getLogger("domovra.print_route")
 
 router = APIRouter()
-
-# Timeout BLE pour les impressions synchrones (test + aperçu)
 _BLE_TIMEOUT = 20
 
 
 def _get_printer_mac() -> str | None:
-    """Retourne la MAC configurée si l'impression est activée, sinon None."""
     s = load_settings()
     if not s.get("printer_enabled"):
         return None
@@ -35,7 +31,6 @@ def _get_printer_mac() -> str | None:
 
 @router.post("/api/print/lot/{lot_id}")
 async def print_lot_label(request: Request, lot_id: int):
-    """Lance l'impression de l'étiquette d'un lot en BLE (fire-and-forget)."""
     mac = _get_printer_mac()
     if not mac:
         return JSONResponse(
@@ -43,18 +38,13 @@ async def print_lot_label(request: Request, lot_id: int):
              "message": "Imprimante non configurée ou désactivée dans les Paramètres."},
             status_code=400,
         )
-
     WARNING_DAYS, CRITICAL_DAYS = get_retention_thresholds()
     lots = list_lots()
     lot = next((l for l in lots if l["id"] == lot_id), None)
     if not lot:
-        return JSONResponse(
-            {"ok": False, "error": "not_found", "message": f"Lot {lot_id} introuvable."},
-            status_code=404,
-        )
-
+        return JSONResponse({"ok": False, "error": "not_found",
+                             "message": f"Lot {lot_id} introuvable."}, status_code=404)
     lot["status"] = status_for(lot.get("best_before"), WARNING_DAYS, CRITICAL_DAYS)
-
     try:
         from services.printer import print_lot
         print_lot(mac, lot)
@@ -66,7 +56,6 @@ async def print_lot_label(request: Request, lot_id: int):
 
 @router.post("/api/print/test")
 async def print_test_label(request: Request):
-    """Lance une impression de test synchrone — retourne le vrai résultat BLE."""
     mac = _get_printer_mac()
     if not mac:
         return JSONResponse(
@@ -74,38 +63,72 @@ async def print_test_label(request: Request):
              "message": "Imprimante non configurée ou désactivée dans les Paramètres."},
             status_code=400,
         )
-
     try:
         from services.printer import send_to_printer, _TEST_DATA
         await asyncio.wait_for(send_to_printer(mac, _TEST_DATA), timeout=_BLE_TIMEOUT)
-        return JSONResponse({"ok": True, "message": f"Etiquette de test imprimée ({mac})."})
+        return JSONResponse({"ok": True, "message": f"Etiquette de test envoyée ({mac})."})
     except asyncio.TimeoutError:
-        msg = f"Timeout ({_BLE_TIMEOUT}s) — imprimante non répondue. Vérifiez qu'elle est allumée et à portée."
-        logger.error("Impression test timeout: %s", mac)
-        return JSONResponse({"ok": False, "error": "timeout", "message": msg}, status_code=504)
-    except RuntimeError as e:
-        logger.error("Impression test: %s", e)
-        return JSONResponse({"ok": False, "error": "print_error", "message": str(e)}, status_code=500)
+        return JSONResponse({"ok": False, "error": "timeout",
+                             "message": f"Timeout ({_BLE_TIMEOUT}s) — imprimante non répondue."}, status_code=504)
     except Exception as e:
-        logger.exception("Impression test inattendue: %s", e)
+        logger.exception("Impression test: %s", e)
         return JSONResponse({"ok": False, "error": "unexpected", "message": str(e)}, status_code=500)
+
+
+@router.post("/api/print/rawtest")
+async def print_raw_test(request: Request):
+    """
+    Envoie du texte ESC/POS brut pour tester si RFCOMM canal 1 peut imprimer.
+    Si du texte sort → RFCOMM fonctionne, c'est le protocole raster qui est faux.
+    Si rien → RFCOMM canal 1 ne sert pas à l'impression sur ce modèle.
+    """
+    mac = _get_printer_mac()
+    if not mac:
+        return JSONResponse({"ok": False, "message": "Imprimante non configurée."}, status_code=400)
+
+    import socket as _socket
+    import asyncio
+
+    def _send():
+        # Test minimal : init + texte + feed
+        payload = (
+            b"\x1b\x40"               # ESC @ — init
+            b"\x1b\x61\x01"           # ESC a 1 — centre
+            b"Test RFCOMM M110\n"     # texte ASCII
+            b"\x1b\x64\x05"           # ESC d 5 — avance 5 lignes
+        )
+        sock = _socket.socket(_socket.AF_BLUETOOTH, _socket.SOCK_STREAM, _socket.BTPROTO_RFCOMM)
+        sock.settimeout(10)
+        try:
+            sock.connect((mac, 1))
+            sock.sendall(payload)
+            return None
+        except Exception as exc:
+            return str(exc)
+        finally:
+            try:
+                sock.close()
+            except Exception:
+                pass
+
+    loop = asyncio.get_event_loop()
+    err = await loop.run_in_executor(None, _send)
+    if err:
+        return JSONResponse({"ok": False, "message": f"Erreur : {err}"}, status_code=500)
+    return JSONResponse({"ok": True, "message": "Texte test envoyé — vérifiez si quelque chose sort de l'imprimante."})
 
 
 @router.get("/api/print/preview/lot/{lot_id}")
 async def preview_lot_label(request: Request, lot_id: int):
-    """Retourne l'image PNG de prévisualisation de l'étiquette (sans imprimer)."""
     WARNING_DAYS, CRITICAL_DAYS = get_retention_thresholds()
     lots = list_lots()
     lot = next((l for l in lots if l["id"] == lot_id), None)
     if not lot:
         return JSONResponse({"error": "not_found"}, status_code=404)
-
     lot["status"] = status_for(lot.get("best_before"), WARNING_DAYS, CRITICAL_DAYS)
-
     try:
         from services.printer import build_label_image
-        png_bytes = build_label_image(lot)
-        return Response(content=png_bytes, media_type="image/png")
+        return Response(content=build_label_image(lot), media_type="image/png")
     except Exception as e:
         logger.error("Preview lot %s: %s", lot_id, e)
         return JSONResponse({"error": str(e)}, status_code=500)
@@ -113,11 +136,9 @@ async def preview_lot_label(request: Request, lot_id: int):
 
 @router.get("/api/print/preview/test")
 async def preview_test_label(request: Request):
-    """Retourne l'image PNG de l'étiquette de test (sans imprimer)."""
     try:
         from services.printer import build_test_label_image
-        png_bytes = build_test_label_image()
-        return Response(content=png_bytes, media_type="image/png")
+        return Response(content=build_test_label_image(), media_type="image/png")
     except Exception as e:
         logger.error("Preview test: %s", e)
         return JSONResponse({"error": str(e)}, status_code=500)
